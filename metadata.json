@@ -1,0 +1,6 @@
+{
+  "name": "Motorista Pro",
+  "description": "Controle financeiro completo para motoristas de aplicativo: corridas, despesas, combustível, manutenções e metas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
