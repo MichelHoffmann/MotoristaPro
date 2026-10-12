@@ -5,26 +5,29 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.AppRepository
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.FuelLog
-import com.example.model.MaintenanceItem
-import com.example.model.Trip
+import com.example.model.FuelChargeRecord
+import com.example.model.VehicleCostItem
+import com.example.model.VehiclePowertrain
 import com.example.model.VehicleProfile
+import com.example.model.ViabilityCalculationResult
+import com.example.model.ViabilityCalculator
+import com.example.model.WorkDay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 enum class PeriodFilter { DIARIO, SEMANAL, MENSAL, ANUAL }
-enum class TripTabFilter { HISTORICO, POR_APP, POR_PERIODO }
-enum class FuelTabFilter { REGISTROS, CONSUMO, ESTATISTICAS }
-enum class MaintenanceTabFilter { SERVICOS, LEMBRETES, HISTORICO }
 enum class ExpenseTabFilter { TODAS, CATEGORIAS, COMPROVANTES }
 
 data class ChartBarPoint(
@@ -32,6 +35,24 @@ data class ChartBarPoint(
     val earnings: Float,
     val expenses: Float
 )
+
+data class CalendarDay(
+    val dayNumber: Int,
+    val dateStr: String, // "dd/MM/yyyy"
+    val dayOfWeek: Int, // Calendar.SUNDAY ... Calendar.SATURDAY
+    val isCurrentMonth: Boolean,
+    val isToday: Boolean,
+    val isPast: Boolean,
+    val isWorkDay: Boolean,
+    val earnedAmount: Double = 0.0
+)
+
+enum class QuickWorkSchedule {
+    MON_TO_FRI,
+    MON_TO_SAT,
+    ALL_DAYS,
+    CLEAR
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -45,148 +66,135 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    val trips: StateFlow<List<Trip>> = repository.trips
+    val dailyEarnings: StateFlow<List<DailyEarning>> = repository.dailyEarnings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val workDays: StateFlow<List<WorkDay>> = repository.workDays
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val expenses: StateFlow<List<Expense>> = repository.expenses
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val fuelLogs: StateFlow<List<FuelLog>> = repository.fuelLogs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val maintenance: StateFlow<List<MaintenanceItem>> = repository.maintenance
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val vehicleProfile: StateFlow<VehicleProfile> = repository.vehicleProfile
         .map { it ?: VehicleProfile() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), VehicleProfile())
 
-    // UI Tab Filters
+    val vehicleCostItems: StateFlow<List<VehicleCostItem>> = repository.vehicleCostItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val fuelChargeRecords: StateFlow<List<FuelChargeRecord>> = repository.fuelChargeRecords
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _selectedPeriod = MutableStateFlow(PeriodFilter.DIARIO)
     val selectedPeriod: StateFlow<PeriodFilter> = _selectedPeriod.asStateFlow()
-
-    private val _selectedTripTab = MutableStateFlow(TripTabFilter.HISTORICO)
-    val selectedTripTab: StateFlow<TripTabFilter> = _selectedTripTab.asStateFlow()
-
-    private val _selectedFuelTab = MutableStateFlow(FuelTabFilter.REGISTROS)
-    val selectedFuelTab: StateFlow<FuelTabFilter> = _selectedFuelTab.asStateFlow()
-
-    private val _selectedMaintenanceTab = MutableStateFlow(MaintenanceTabFilter.SERVICOS)
-    val selectedMaintenanceTab: StateFlow<MaintenanceTabFilter> = _selectedMaintenanceTab.asStateFlow()
 
     private val _selectedExpenseTab = MutableStateFlow(ExpenseTabFilter.TODAS)
     val selectedExpenseTab: StateFlow<ExpenseTabFilter> = _selectedExpenseTab.asStateFlow()
 
     fun setPeriodFilter(filter: PeriodFilter) { _selectedPeriod.value = filter }
-    fun setTripTabFilter(filter: TripTabFilter) { _selectedTripTab.value = filter }
-    fun setFuelTabFilter(filter: FuelTabFilter) { _selectedFuelTab.value = filter }
-    fun setMaintenanceTabFilter(filter: MaintenanceTabFilter) { _selectedMaintenanceTab.value = filter }
     fun setExpenseTabFilter(filter: ExpenseTabFilter) { _selectedExpenseTab.value = filter }
 
-    // Dynamic Chart Data based on actual data
-    fun getDynamicChartData(tripsList: List<Trip>, expensesList: List<Expense>): List<ChartBarPoint> {
-        if (tripsList.isEmpty() && expensesList.isEmpty()) {
-            return listOf(
-                ChartBarPoint("Seg", 0f, 0f),
-                ChartBarPoint("Ter", 0f, 0f),
-                ChartBarPoint("Qua", 0f, 0f),
-                ChartBarPoint("Qui", 0f, 0f),
-                ChartBarPoint("Sex", 0f, 0f),
-                ChartBarPoint("Sáb", 0f, 0f),
-                ChartBarPoint("Dom", 0f, 0f)
-            )
-        }
+    // Calendar state (Selected Year & Month for planning)
+    private val calendar = Calendar.getInstance()
+    private val _currentYearMonth = MutableStateFlow(
+        Pair(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH))
+    )
+    val currentYearMonth: StateFlow<Pair<Int, Int>> = _currentYearMonth.asStateFlow()
 
-        // Group by date or day of week
-        val dates = (tripsList.map { it.dateStr } + expensesList.map { it.dateStr }).distinct().takeLast(6)
-        if (dates.isEmpty()) {
-            return emptyList()
-        }
-        return dates.map { date ->
-            val earn = tripsList.filter { it.dateStr == date }.sumOf { it.netAmount }.toFloat()
-            val exp = expensesList.filter { it.dateStr == date }.sumOf { it.amount }.toFloat()
-            val shortDate = if (date.length >= 5) date.substring(0, 5) else date
-            ChartBarPoint(shortDate, earn, exp)
+    fun nextMonth() {
+        val (year, month) = _currentYearMonth.value
+        if (month == Calendar.DECEMBER) {
+            _currentYearMonth.value = Pair(year + 1, Calendar.JANUARY)
+        } else {
+            _currentYearMonth.value = Pair(year, month + 1)
         }
     }
 
-    // Save initial or updated profile from New User Menu
-    fun saveUserProfile(
-        name: String,
-        model: String,
-        year: String,
-        fuelType: String,
-        isElectric: Boolean,
-        avgConsumption: Double,
-        fuelOrEnergyPrice: Double,
-        currentMileage: Double,
-        dailyGoal: Double
+    fun previousMonth() {
+        val (year, month) = _currentYearMonth.value
+        if (month == Calendar.JANUARY) {
+            _currentYearMonth.value = Pair(year - 1, Calendar.DECEMBER)
+        } else {
+            _currentYearMonth.value = Pair(year, month - 1)
+        }
+    }
+
+    // Toggle work day
+    fun toggleWorkDay(dateStr: String) {
+        viewModelScope.launch {
+            repository.toggleWorkDay(dateStr)
+        }
+    }
+
+    // Apply bulk work schedule for the selected month
+    fun applyQuickSchedule(schedule: QuickWorkSchedule) {
+        viewModelScope.launch {
+            val (year, month) = _currentYearMonth.value
+            val cal = Calendar.getInstance()
+            cal.set(year, month, 1)
+            val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+            for (day in 1..maxDay) {
+                cal.set(year, month, day)
+                val dateStr = String.format(Locale.getDefault(), "%02d/%02d/%04d", day, month + 1, year)
+                val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+
+                val shouldWork = when (schedule) {
+                    QuickWorkSchedule.MON_TO_FRI -> dayOfWeek in Calendar.MONDAY..Calendar.FRIDAY
+                    QuickWorkSchedule.MON_TO_SAT -> dayOfWeek in Calendar.MONDAY..Calendar.SATURDAY
+                    QuickWorkSchedule.ALL_DAYS -> true
+                    QuickWorkSchedule.CLEAR -> false
+                }
+                repository.setWorkDay(dateStr, shouldWork)
+            }
+        }
+    }
+
+    // Register daily earnings & total trip count
+    fun recordDailyWork(
+        date: String,
+        totalAmount: Double,
+        tripsCount: Int,
+        kmDriven: Double,
+        notes: String
     ) {
         viewModelScope.launch {
-            repository.updateVehicleProfile(
-                VehicleProfile(
-                    id = 1,
-                    driverName = name,
-                    modelName = model,
-                    manufacturingYear = year,
-                    fuelType = fuelType,
-                    isElectric = isElectric,
-                    averageConsumption = avgConsumption,
-                    fuelOrEnergyPrice = fuelOrEnergyPrice,
-                    currentMileage = currentMileage,
-                    dailyGoal = if (dailyGoal > 0) dailyGoal else 250.0,
-                    weeklyGoal = (if (dailyGoal > 0) dailyGoal else 250.0) * 6,
-                    isProfileConfigured = true
-                )
-            )
-        }
-    }
-
-    fun resetAllDataToZero() {
-        viewModelScope.launch {
-            repository.resetAllDataToZero()
-        }
-    }
-
-    // Actions
-    fun addTrip(
-        platform: String,
-        amount: Double,
-        distanceKm: Double,
-        durationMin: Int,
-        time: String,
-        date: String
-    ) {
-        viewModelScope.launch {
-            val fee = amount * 0.20 // Taxa estimada
             val effectiveDate = if (date.isBlank()) getTodayDateString() else date
-            val effectiveTime = if (time.isBlank()) getCurrentTimeString() else time
-            repository.addTrip(
-                Trip(
-                    platform = platform,
-                    netAmount = amount,
-                    grossAmount = amount + fee,
-                    fee = fee,
-                    distanceKm = distanceKm,
-                    durationMinutes = durationMin,
-                    timeStr = effectiveTime,
-                    dateStr = effectiveDate
+            // Automatically mark this day as a work day
+            repository.setWorkDay(effectiveDate, true)
+
+            repository.addDailyEarning(
+                DailyEarning(
+                    dateStr = effectiveDate,
+                    totalAmount = totalAmount,
+                    tripsCount = tripsCount,
+                    kmDriven = kmDriven,
+                    notes = notes
                 )
             )
-            // Update odometer
+
+            // Update odometer if km is greater
             val currentProf = vehicleProfile.value
-            if (distanceKm > 0) {
+            if (kmDriven > 0) {
                 repository.updateVehicleProfile(
-                    currentProf.copy(currentMileage = currentProf.currentMileage + distanceKm)
+                    currentProf.copy(currentMileage = currentProf.currentMileage + kmDriven)
                 )
             }
         }
     }
 
-    fun deleteTrip(trip: Trip) {
-        viewModelScope.launch { repository.deleteTrip(trip) }
+    fun deleteDailyEarning(earning: DailyEarning) {
+        viewModelScope.launch { repository.deleteDailyEarning(earning) }
     }
 
+    fun updateMonthlyGoal(goal: Double) {
+        viewModelScope.launch {
+            val prof = vehicleProfile.value
+            repository.updateVehicleProfile(prof.copy(monthlyGoal = goal))
+        }
+    }
+
+    // Expenses
     fun addExpense(category: String, amount: Double, description: String, date: String) {
         viewModelScope.launch {
             val effectiveDate = if (date.isBlank()) getTodayDateString() else date
@@ -205,94 +213,144 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.deleteExpense(expense) }
     }
 
-    fun addFuelLog(
-        date: String,
-        litersOrKwh: Double,
-        totalAmount: Double,
-        fuelType: String,
-        odometer: Double,
-        station: String
-    ) {
+    // Vehicle Cost Items (Fixed & Recurring Costs)
+    fun addVehicleCostItem(item: VehicleCostItem) {
         viewModelScope.launch {
-            val pricePerUnit = if (litersOrKwh > 0) totalAmount / litersOrKwh else 0.0
-            val effectiveDate = if (date.isBlank()) getTodayDateString() else date
-            val currentProf = vehicleProfile.value
-            val avg = if (currentProf.averageConsumption > 0) currentProf.averageConsumption else 10.0
+            repository.addVehicleCostItem(item)
+        }
+    }
 
-            repository.addFuelLog(
-                FuelLog(
-                    dateStr = effectiveDate,
-                    liters = litersOrKwh,
-                    totalAmount = totalAmount,
-                    pricePerLiter = pricePerUnit,
-                    fuelType = fuelType,
-                    odometerKm = odometer,
-                    averageKmPerLiter = avg,
-                    stationName = station.ifBlank { if (fuelType == "Elétrico") "Ponto de Recarga" else "Posto de Combustível" }
-                )
-            )
-            // Also register as expense
+    fun deleteVehicleCostItem(item: VehicleCostItem) {
+        viewModelScope.launch {
+            repository.deleteVehicleCostItem(item)
+        }
+    }
+
+    // Fuel & Electric Charge Records
+    fun addFuelChargeRecord(record: FuelChargeRecord) {
+        viewModelScope.launch {
+            repository.addFuelChargeRecord(record)
+            // Also add as expense to keep historical financial sync
+            val catName = if (record.isElectricCharge) "Recarga Elétrica" else "Combustível"
+            val desc = if (record.isElectricCharge) {
+                "${String.format(Locale.GERMANY, "%.1f", record.quantity)} kWh (${record.chargeLocation.displayName})"
+            } else {
+                "${String.format(Locale.GERMANY, "%.1f", record.quantity)} L"
+            }
             repository.addExpense(
                 Expense(
-                    category = "Combustível",
-                    amount = totalAmount,
-                    description = "$fuelType em $station ($litersOrKwh ${if (fuelType == "Elétrico") "kWh" else "L"})",
-                    dateStr = effectiveDate
+                    category = catName,
+                    amount = record.totalCost,
+                    description = desc,
+                    dateStr = record.dateStr
                 )
             )
-            if (odometer > currentProf.currentMileage) {
-                repository.updateVehicleProfile(currentProf.copy(currentMileage = odometer))
-            }
         }
     }
 
-    fun deleteFuelLog(fuelLog: FuelLog) {
-        viewModelScope.launch { repository.deleteFuelLog(fuelLog) }
+    fun deleteFuelChargeRecord(record: FuelChargeRecord) {
+        viewModelScope.launch {
+            repository.deleteFuelChargeRecord(record)
+        }
     }
 
-    fun addMaintenance(
-        title: String,
-        cost: Double,
-        date: String,
-        alertKm: Int,
-        alertDays: Int,
-        isCompleted: Boolean,
-        notes: String
+    // Save full vehicle & calculation parameters profile
+    fun updateFullVehicleProfile(profile: VehicleProfile) {
+        viewModelScope.launch {
+            repository.updateVehicleProfile(profile)
+        }
+    }
+
+    // Viability Calculation State Flow
+    val viabilityResult: StateFlow<ViabilityCalculationResult> = combine(
+        vehicleProfile,
+        vehicleCostItems,
+        workDays,
+        currentYearMonth
+    ) { profile, costItems, wDays, yearMonth ->
+        val (year, month) = yearMonth
+        val plannedThisMonth = wDays.count {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val dMonth = parts[1].toIntOrNull()?.minus(1)
+                val dYear = parts[2].toIntOrNull()
+                dMonth == month && dYear == year && it.isWorkDay
+            } else false
+        }
+        val daysCount = if (plannedThisMonth > 0) plannedThisMonth else 22
+        ViabilityCalculator.calculate(profile, costItems, daysCount)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        ViabilityCalculationResult(hasSufficientData = false)
+    )
+
+    // Save user profile
+    fun saveUserProfile(
+        name: String,
+        model: String,
+        year: String,
+        fuelType: String,
+        isElectric: Boolean,
+        avgConsumption: Double,
+        fuelOrEnergyPrice: Double,
+        currentMileage: Double,
+        monthlyGoal: Double
     ) {
         viewModelScope.launch {
-            val effectiveDate = if (date.isBlank()) getTodayDateString() else date
-            repository.addMaintenance(
-                MaintenanceItem(
-                    title = title,
-                    cost = cost,
-                    dateStr = effectiveDate,
-                    alertKmRemaining = alertKm,
-                    alertDaysRemaining = alertDays,
-                    isCompleted = isCompleted,
-                    notes = notes
+            val current = vehicleProfile.value
+            val inferredPowertrain = when {
+                isElectric || fuelType.equals("Elétrico", ignoreCase = true) -> VehiclePowertrain.ELETRICO
+                fuelType.contains("Plug-in", ignoreCase = true) -> VehiclePowertrain.HIBRIDO_PLUGIN
+                fuelType.equals("Híbrido", ignoreCase = true) -> VehiclePowertrain.HIBRIDO
+                else -> VehiclePowertrain.COMBUSTAO
+            }
+            repository.updateVehicleProfile(
+                current.copy(
+                    id = 1,
+                    driverName = name,
+                    modelName = model,
+                    manufacturingYear = year,
+                    fuelType = fuelType,
+                    isElectric = isElectric,
+                    vehiclePowertrain = inferredPowertrain,
+                    averageConsumption = avgConsumption,
+                    fuelOrEnergyPrice = fuelOrEnergyPrice,
+                    currentMileage = currentMileage,
+                    monthlyGoal = if (monthlyGoal > 0) monthlyGoal else 6000.0,
+                    isProfileConfigured = true
                 )
             )
-            if (isCompleted && cost > 0) {
-                repository.addExpense(
-                    Expense(
-                        category = "Manutenção",
-                        amount = cost,
-                        description = title,
-                        dateStr = effectiveDate
-                    )
-                )
-            }
         }
     }
 
-    fun toggleMaintenanceStatus(item: MaintenanceItem) {
+    fun resetAllDataToZero() {
         viewModelScope.launch {
-            repository.updateMaintenance(item.copy(isCompleted = !item.isCompleted))
+            repository.resetAllDataToZero()
         }
     }
 
-    fun deleteMaintenance(item: MaintenanceItem) {
-        viewModelScope.launch { repository.deleteMaintenance(item) }
+    // Dynamic Chart Data
+    fun getDynamicChartData(earningsList: List<DailyEarning>, expensesList: List<Expense>): List<ChartBarPoint> {
+        if (earningsList.isEmpty() && expensesList.isEmpty()) {
+            return listOf(
+                ChartBarPoint("Seg", 0f, 0f),
+                ChartBarPoint("Ter", 0f, 0f),
+                ChartBarPoint("Qua", 0f, 0f),
+                ChartBarPoint("Qui", 0f, 0f),
+                ChartBarPoint("Sex", 0f, 0f),
+                ChartBarPoint("Sáb", 0f, 0f),
+                ChartBarPoint("Dom", 0f, 0f)
+            )
+        }
+
+        val dates = (earningsList.map { it.dateStr } + expensesList.map { it.dateStr }).distinct().takeLast(7)
+        return dates.map { date ->
+            val earn = earningsList.filter { it.dateStr == date }.sumOf { it.totalAmount }.toFloat()
+            val exp = expensesList.filter { it.dateStr == date }.sumOf { it.amount }.toFloat()
+            val shortDate = if (date.length >= 5) date.substring(0, 5) else date
+            ChartBarPoint(shortDate, earn, exp)
+        }
     }
 
     companion object {
@@ -314,9 +372,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return sdf.format(Date()).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
         }
 
-        fun getCurrentTimeString(): String {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            return sdf.format(Date())
+        fun getCurrentMonthName(month: Int): String {
+            val months = listOf(
+                "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+            )
+            return months.getOrElse(month) { "" }
         }
     }
 }

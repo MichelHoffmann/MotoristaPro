@@ -5,27 +5,37 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Update
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.FuelLog
-import com.example.model.MaintenanceItem
-import com.example.model.Trip
+import com.example.model.FuelChargeRecord
+import com.example.model.VehicleCostItem
 import com.example.model.VehicleProfile
+import com.example.model.WorkDay
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppDao {
-    // Trips
-    @Query("SELECT * FROM trips ORDER BY id DESC")
-    fun getAllTrips(): Flow<List<Trip>>
+    // Daily Earnings
+    @Query("SELECT * FROM daily_earnings ORDER BY id DESC")
+    fun getAllDailyEarnings(): Flow<List<DailyEarning>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrip(trip: Trip): Long
+    suspend fun insertDailyEarning(earning: DailyEarning): Long
 
     @Delete
-    suspend fun deleteTrip(trip: Trip)
+    suspend fun deleteDailyEarning(earning: DailyEarning)
 
-    // Expenses
+    // Planned Work Days
+    @Query("SELECT * FROM work_days")
+    fun getAllWorkDays(): Flow<List<WorkDay>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkDay(workDay: WorkDay): Long
+
+    @Query("DELETE FROM work_days WHERE dateStr = :dateStr")
+    suspend fun deleteWorkDayByDate(dateStr: String)
+
+    // Expenses (Gerais)
     @Query("SELECT * FROM expenses ORDER BY id DESC")
     fun getAllExpenses(): Flow<List<Expense>>
 
@@ -35,28 +45,25 @@ interface AppDao {
     @Delete
     suspend fun deleteExpense(expense: Expense)
 
-    // Fuel Logs
-    @Query("SELECT * FROM fuel_logs ORDER BY id DESC")
-    fun getAllFuelLogs(): Flow<List<FuelLog>>
+    // Vehicle Fixed/Maintenance Cost Items
+    @Query("SELECT * FROM vehicle_fixed_expenses ORDER BY id DESC")
+    fun getAllVehicleCostItems(): Flow<List<VehicleCostItem>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertFuelLog(fuelLog: FuelLog): Long
+    suspend fun insertVehicleCostItem(item: VehicleCostItem): Long
 
     @Delete
-    suspend fun deleteFuelLog(fuelLog: FuelLog)
+    suspend fun deleteVehicleCostItem(item: VehicleCostItem)
 
-    // Maintenance
-    @Query("SELECT * FROM maintenance_items ORDER BY isCompleted ASC, id DESC")
-    fun getAllMaintenance(): Flow<List<MaintenanceItem>>
+    // Fuel and Electric Charge Records
+    @Query("SELECT * FROM energy_fuel_records ORDER BY id DESC")
+    fun getAllFuelChargeRecords(): Flow<List<FuelChargeRecord>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMaintenance(item: MaintenanceItem): Long
-
-    @Update
-    suspend fun updateMaintenance(item: MaintenanceItem)
+    suspend fun insertFuelChargeRecord(record: FuelChargeRecord): Long
 
     @Delete
-    suspend fun deleteMaintenance(item: MaintenanceItem)
+    suspend fun deleteFuelChargeRecord(record: FuelChargeRecord)
 
     // Vehicle Profile
     @Query("SELECT * FROM vehicle_profile WHERE id = 1 LIMIT 1")
@@ -65,17 +72,21 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveVehicleProfile(profile: VehicleProfile)
 
-    @Query("DELETE FROM trips")
-    suspend fun clearAllTrips()
+    // Reset All Data
+    @Query("DELETE FROM daily_earnings")
+    suspend fun clearAllDailyEarnings()
+
+    @Query("DELETE FROM work_days")
+    suspend fun clearAllWorkDays()
 
     @Query("DELETE FROM expenses")
     suspend fun clearAllExpenses()
 
-    @Query("DELETE FROM fuel_logs")
-    suspend fun clearAllFuelLogs()
+    @Query("DELETE FROM vehicle_fixed_expenses")
+    suspend fun clearAllVehicleCostItems()
 
-    @Query("DELETE FROM maintenance_items")
-    suspend fun clearAllMaintenance()
+    @Query("DELETE FROM energy_fuel_records")
+    suspend fun clearAllFuelChargeRecords()
 
     @Query("DELETE FROM vehicle_profile")
     suspend fun clearVehicleProfile()

@@ -17,8 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.Trip
 import com.example.ui.components.DualBarChart
 import com.example.ui.components.PeriodTabs
 import com.example.ui.theme.*
@@ -28,7 +28,7 @@ import com.example.ui.viewmodel.PeriodFilter
 
 @Composable
 fun ReportsScreen(
-    trips: List<Trip>,
+    dailyEarnings: List<DailyEarning>,
     expenses: List<Expense>,
     selectedPeriod: PeriodFilter,
     onPeriodSelected: (PeriodFilter) -> Unit,
@@ -43,11 +43,12 @@ fun ReportsScreen(
         PeriodFilter.ANUAL -> 3
     }
 
-    // Real dynamic totals from database (defaults to 0 when empty)
-    val totalEarnings = trips.sumOf { it.netAmount }
+    // Dynamic totals from database
+    val totalEarnings = dailyEarnings.sumOf { it.totalAmount }
     val totalExpensesAmount = expenses.sumOf { it.amount }
     val netProfit = totalEarnings - totalExpensesAmount
-    val totalKm = trips.sumOf { it.distanceKm }
+    val totalKm = dailyEarnings.sumOf { it.kmDriven }
+    val totalTrips = dailyEarnings.sumOf { it.tripsCount }
     val ratePerKm = if (totalKm > 0) totalEarnings / totalKm else 0.0
 
     // Category breakdown
@@ -132,7 +133,7 @@ fun ReportsScreen(
 
         // Resumo no período
         Text(
-            text = "Resumo no período",
+            text = "Resumo financeiro",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = TextWhite
@@ -410,8 +411,8 @@ fun ReportsScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Total Corridas", fontSize = 12.sp, color = TextSecondary)
-                    Text("${trips.size} corridas", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                    Text("Total Corridas Feitas", fontSize = 12.sp, color = TextSecondary)
+                    Text("$totalTrips corridas", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
                 }
             }
         }

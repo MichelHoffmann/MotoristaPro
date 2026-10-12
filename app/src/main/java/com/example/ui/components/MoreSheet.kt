@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -25,8 +24,9 @@ import com.example.ui.theme.*
 @Composable
 fun MoreSheet(
     onDismiss: () -> Unit,
+    onNavigateToVehicle: () -> Unit,
+    onNavigateToPlanning: () -> Unit,
     onNavigateToExpenses: () -> Unit,
-    onNavigateToMaintenance: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
     ModalBottomSheet(
@@ -47,6 +47,38 @@ fun MoreSheet(
                 color = TextWhite
             )
 
+            // Section 1: Meu Veículo & Viabilidade R$/km
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MoreSheetCard(
+                    title = "Meu Veículo",
+                    subtitle = "Custos, propulsão & R$/km",
+                    icon = Icons.Outlined.DirectionsCar,
+                    iconBg = EmeraldGreen.copy(alpha = 0.2f),
+                    iconTint = EmeraldGreen,
+                    onClick = {
+                        onDismiss()
+                        onNavigateToVehicle()
+                    },
+                    modifier = Modifier.weight(1f).testTag("more_vehicle_card")
+                )
+
+                MoreSheetCard(
+                    title = "Planejamento",
+                    subtitle = "Calendário & Feriados",
+                    icon = Icons.Outlined.CalendarMonth,
+                    iconBg = MetricBlue.copy(alpha = 0.2f),
+                    iconTint = MetricBlue,
+                    onClick = {
+                        onDismiss()
+                        onNavigateToPlanning()
+                    },
+                    modifier = Modifier.weight(1f).testTag("more_planning_card")
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -65,47 +97,16 @@ fun MoreSheet(
                 )
 
                 MoreSheetCard(
-                    title = "Manutenção",
-                    subtitle = "Lembretes e serviços",
-                    icon = Icons.Outlined.Build,
-                    iconBg = MetricBlue.copy(alpha = 0.2f),
-                    iconTint = MetricBlue,
-                    onClick = {
-                        onDismiss()
-                        onNavigateToMaintenance()
-                    },
-                    modifier = Modifier.weight(1f).testTag("more_maintenance_card")
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                MoreSheetCard(
                     title = "Configurações",
-                    subtitle = "Veículo, metas e dados",
+                    subtitle = "Perfil, dados e reset",
                     icon = Icons.Outlined.Settings,
-                    iconBg = EmeraldGreen.copy(alpha = 0.2f),
-                    iconTint = EmeraldGreen,
-                    onClick = {
-                        onDismiss()
-                        onNavigateToSettings()
-                    },
-                    modifier = Modifier.weight(1f).testTag("more_settings_card")
-                )
-
-                MoreSheetCard(
-                    title = "Exportar",
-                    subtitle = "Relatório CSV / PDF",
-                    icon = Icons.Outlined.FileDownload,
                     iconBg = FuelOrange.copy(alpha = 0.2f),
                     iconTint = FuelOrange,
                     onClick = {
                         onDismiss()
                         onNavigateToSettings()
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).testTag("more_settings_card")
                 )
             }
 

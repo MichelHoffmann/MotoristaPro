@@ -22,18 +22,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.*
+import com.example.ui.viewmodel.MainViewModel
 
 @Composable
-fun AddTripDialog(
+fun RecordDailyWorkDialog(
     onDismiss: () -> Unit,
-    onConfirm: (platform: String, amount: Double, distanceKm: Double, durationMin: Int, time: String, date: String) -> Unit
+    onConfirm: (date: String, totalAmount: Double, tripsCount: Int, kmDriven: Double, notes: String) -> Unit
 ) {
-    var platform by remember { mutableStateOf("99") }
-    var amountText by remember { mutableStateOf("25.50") }
-    var distanceText by remember { mutableStateOf("7.2") }
-    var durationText by remember { mutableStateOf("18") }
-    var timeText by remember { mutableStateOf("14:30") }
-    var dateText by remember { mutableStateOf("26/05/2025") }
+    var dateText by remember { mutableStateOf(MainViewModel.getTodayDateString()) }
+    var amountText by remember { mutableStateOf("") }
+    var tripsCountText by remember { mutableStateOf("") }
+    var kmDrivenText by remember { mutableStateOf("") }
+    var notesText by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -52,74 +52,73 @@ fun AddTripDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Registrar Corrida",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextWhite
-                    )
+                    Column {
+                        Text(
+                            text = "Faturamento do Dia",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextWhite
+                        )
+                        Text(
+                            text = "Lance o total ganho e corridas feitas",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
                     }
                 }
 
-                // Platform Selector
-                Text("Plataforma", fontSize = 13.sp, color = TextSecondary)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("99", "Uber", "InDrive", "Particular").forEach { plat ->
-                        val isSel = platform == plat
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) EmeraldGreen else SurfaceDark)
-                                .clickable { platform = plat }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = plat,
-                                color = if (isSel) Color.White else TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
                 OutlinedTextField(
-                    value = amountText,
-                    onValueChange = { amountText = it },
-                    label = { Text("Valor Líquido (R$)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().testTag("trip_amount_input"),
+                    value = dateText,
+                    onValueChange = { dateText = it },
+                    label = { Text("Data (DD/MM/AAAA)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = EmeraldGreen,
                         unfocusedBorderColor = BorderDark
                     )
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it },
+                    label = { Text("Valor Total Ganho no Dia (R$)") },
+                    placeholder = { Text("Ex: 312.50") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("daily_amount_input"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
+                    )
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
-                        value = distanceText,
-                        onValueChange = { distanceText = it },
-                        label = { Text("Distância (km)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
+                        value = tripsCountText,
+                        onValueChange = { tripsCountText = it },
+                        label = { Text("Total de Corridas") },
+                        placeholder = { Text("Ex: 18") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("daily_trips_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = EmeraldGreen,
                             unfocusedBorderColor = BorderDark
                         )
                     )
+
                     OutlinedTextField(
-                        value = durationText,
-                        onValueChange = { durationText = it },
-                        label = { Text("Duração (min)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
+                        value = kmDrivenText,
+                        onValueChange = { kmDrivenText = it },
+                        label = { Text("Km Rodados") },
+                        placeholder = { Text("Ex: 142.6") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("daily_km_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = EmeraldGreen,
                             unfocusedBorderColor = BorderDark
@@ -127,42 +126,32 @@ fun AddTripDialog(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = timeText,
-                        onValueChange = { timeText = it },
-                        label = { Text("Horário (HH:mm)") },
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderDark
-                        )
+                OutlinedTextField(
+                    value = notesText,
+                    onValueChange = { notesText = it },
+                    label = { Text("Observação (Opcional)") },
+                    placeholder = { Text("Ex: Uber e 99 - Chuva à tarde") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
                     )
-                    OutlinedTextField(
-                        value = dateText,
-                        onValueChange = { dateText = it },
-                        label = { Text("Data (DD/MM/AAAA)") },
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderDark
-                        )
-                    )
-                }
+                )
 
                 Button(
                     onClick = {
                         val amt = amountText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        val dist = distanceText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        val dur = durationText.toIntOrNull() ?: 0
-                        onConfirm(platform, amt, dist, dur, timeText, dateText)
+                        val trips = tripsCountText.toIntOrNull() ?: 0
+                        val km = kmDrivenText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        onConfirm(dateText, amt, trips, km, notesText)
                         onDismiss()
                     },
-                    modifier = Modifier.fillMaxWidth().testTag("save_trip_button"),
+                    modifier = Modifier.fillMaxWidth().testTag("save_daily_work_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Salvar Corrida", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Salvar Faturamento do Dia", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -175,9 +164,9 @@ fun AddExpenseDialog(
     onConfirm: (category: String, amount: Double, description: String, date: String) -> Unit
 ) {
     var category by remember { mutableStateOf("Combustível") }
-    var amountText by remember { mutableStateOf("50.00") }
+    var amountText by remember { mutableStateOf("") }
     var descText by remember { mutableStateOf("") }
-    var dateText by remember { mutableStateOf("26/05/2025") }
+    var dateText by remember { mutableStateOf(MainViewModel.getTodayDateString()) }
 
     val categories = listOf("Combustível", "Alimentação", "Manutenção", "Estacionamento", "Lavagem", "Outros")
 
@@ -240,6 +229,7 @@ fun AddExpenseDialog(
                     value = amountText,
                     onValueChange = { amountText = it },
                     label = { Text("Valor (R$)") },
+                    placeholder = { Text("Ex: 50.00") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth().testTag("expense_amount_input"),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -252,7 +242,7 @@ fun AddExpenseDialog(
                     value = descText,
                     onValueChange = { descText = it },
                     label = { Text("Descrição / Observação") },
-                    placeholder = { Text("Ex: Almoço no centro") },
+                    placeholder = { Text("Ex: Abastecimento ou Almoço") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = ExpenseRed,
@@ -282,239 +272,6 @@ fun AddExpenseDialog(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Salvar Despesa", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AddFuelDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (date: String, liters: Double, total: Double, type: String, odo: Double, station: String) -> Unit
-) {
-    var dateText by remember { mutableStateOf("26/05/2025") }
-    var litersText by remember { mutableStateOf("30.0") }
-    var totalText by remember { mutableStateOf("204.00") }
-    var fuelType by remember { mutableStateOf("Gasolina") }
-    var odoText by remember { mutableStateOf("142650") }
-    var stationText by remember { mutableStateOf("Posto Ipiranga") }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = CardDark,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Registrar Abastecimento",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextWhite
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("Gasolina", "Etanol", "GNV", "Diesel").forEach { type ->
-                        val isSel = fuelType == type
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) FuelOrange else SurfaceDark)
-                                .clickable { fuelType = type }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = type,
-                                color = if (isSel) Color.White else TextSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = totalText,
-                        onValueChange = { totalText = it },
-                        label = { Text("Valor Total (R$)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = FuelOrange,
-                            unfocusedBorderColor = BorderDark
-                        )
-                    )
-                    OutlinedTextField(
-                        value = litersText,
-                        onValueChange = { litersText = it },
-                        label = { Text("Litros") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = FuelOrange,
-                            unfocusedBorderColor = BorderDark
-                        )
-                    )
-                }
-
-                OutlinedTextField(
-                    value = odoText,
-                    onValueChange = { odoText = it },
-                    label = { Text("Odômetro atual (km)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = FuelOrange,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                OutlinedTextField(
-                    value = stationText,
-                    onValueChange = { stationText = it },
-                    label = { Text("Nome do Posto") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = FuelOrange,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                Button(
-                    onClick = {
-                        val lit = litersText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        val tot = totalText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        val odo = odoText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        onConfirm(dateText, lit, tot, fuelType, odo, stationText)
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("save_fuel_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = FuelOrange),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Salvar Abastecimento", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun EditVehicleDialog(
-    currentModel: String,
-    currentVersion: String,
-    currentMileage: Double,
-    currentGoal: Double,
-    onDismiss: () -> Unit,
-    onConfirm: (model: String, version: String, mileage: Double, dailyGoal: Double) -> Unit
-) {
-    var model by remember { mutableStateOf(currentModel) }
-    var version by remember { mutableStateOf(currentVersion) }
-    var mileageText by remember { mutableStateOf(currentMileage.toInt().toString()) }
-    var goalText by remember { mutableStateOf(currentGoal.toInt().toString()) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = CardDark,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Dados do Veículo & Metas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextWhite)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
-                    }
-                }
-
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text("Modelo do Veículo") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                OutlinedTextField(
-                    value = version,
-                    onValueChange = { version = it },
-                    label = { Text("Versão / Motor") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                OutlinedTextField(
-                    value = mileageText,
-                    onValueChange = { mileageText = it },
-                    label = { Text("Quilometragem Atual (km)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                OutlinedTextField(
-                    value = goalText,
-                    onValueChange = { goalText = it },
-                    label = { Text("Meta Diária (R$)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderDark
-                    )
-                )
-
-                Button(
-                    onClick = {
-                        val mil = mileageText.toDoubleOrNull() ?: currentMileage
-                        val gol = goalText.toDoubleOrNull() ?: currentGoal
-                        onConfirm(model, version, mil, gol)
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Salvar Alterações", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }

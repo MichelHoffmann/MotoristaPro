@@ -1,45 +1,63 @@
 package com.example.data
 
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.FuelLog
-import com.example.model.MaintenanceItem
-import com.example.model.Trip
+import com.example.model.FuelChargeRecord
+import com.example.model.VehicleCostItem
 import com.example.model.VehicleProfile
+import com.example.model.WorkDay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
 class AppRepository(private val dao: AppDao) {
 
-    val trips: Flow<List<Trip>> = dao.getAllTrips()
+    val dailyEarnings: Flow<List<DailyEarning>> = dao.getAllDailyEarnings()
+    val workDays: Flow<List<WorkDay>> = dao.getAllWorkDays()
     val expenses: Flow<List<Expense>> = dao.getAllExpenses()
-    val fuelLogs: Flow<List<FuelLog>> = dao.getAllFuelLogs()
-    val maintenance: Flow<List<MaintenanceItem>> = dao.getAllMaintenance()
     val vehicleProfile: Flow<VehicleProfile?> = dao.getVehicleProfile()
+    val vehicleCostItems: Flow<List<VehicleCostItem>> = dao.getAllVehicleCostItems()
+    val fuelChargeRecords: Flow<List<FuelChargeRecord>> = dao.getAllFuelChargeRecords()
 
-    suspend fun addTrip(trip: Trip) = dao.insertTrip(trip)
-    suspend fun deleteTrip(trip: Trip) = dao.deleteTrip(trip)
+    suspend fun addDailyEarning(earning: DailyEarning) = dao.insertDailyEarning(earning)
+    suspend fun deleteDailyEarning(earning: DailyEarning) = dao.deleteDailyEarning(earning)
+
+    suspend fun toggleWorkDay(dateStr: String) {
+        val currentDays = workDays.firstOrNull() ?: emptyList()
+        val exists = currentDays.any { it.dateStr == dateStr && it.isWorkDay }
+        if (exists) {
+            dao.deleteWorkDayByDate(dateStr)
+        } else {
+            dao.insertWorkDay(WorkDay(dateStr = dateStr, isWorkDay = true))
+        }
+    }
+
+    suspend fun setWorkDay(dateStr: String, isWork: Boolean) {
+        if (isWork) {
+            dao.insertWorkDay(WorkDay(dateStr = dateStr, isWorkDay = true))
+        } else {
+            dao.deleteWorkDayByDate(dateStr)
+        }
+    }
 
     suspend fun addExpense(expense: Expense) = dao.insertExpense(expense)
     suspend fun deleteExpense(expense: Expense) = dao.deleteExpense(expense)
 
-    suspend fun addFuelLog(fuelLog: FuelLog) = dao.insertFuelLog(fuelLog)
-    suspend fun deleteFuelLog(fuelLog: FuelLog) = dao.deleteFuelLog(fuelLog)
+    // Vehicle Costs
+    suspend fun addVehicleCostItem(item: VehicleCostItem) = dao.insertVehicleCostItem(item)
+    suspend fun deleteVehicleCostItem(item: VehicleCostItem) = dao.deleteVehicleCostItem(item)
 
-    suspend fun addMaintenance(item: MaintenanceItem) = dao.insertMaintenance(item)
-    suspend fun updateMaintenance(item: MaintenanceItem) = dao.updateMaintenance(item)
-    suspend fun deleteMaintenance(item: MaintenanceItem) = dao.deleteMaintenance(item)
+    // Fuel and Energy records
+    suspend fun addFuelChargeRecord(record: FuelChargeRecord) = dao.insertFuelChargeRecord(record)
+    suspend fun deleteFuelChargeRecord(record: FuelChargeRecord) = dao.deleteFuelChargeRecord(record)
 
     suspend fun updateVehicleProfile(profile: VehicleProfile) = dao.saveVehicleProfile(profile)
 
-    suspend fun clearAllFinancialData() {
-        dao.clearAllTrips()
-        dao.clearAllExpenses()
-        dao.clearAllFuelLogs()
-        dao.clearAllMaintenance()
-    }
-
     suspend fun resetAllDataToZero() {
-        clearAllFinancialData()
+        dao.clearAllDailyEarnings()
+        dao.clearAllWorkDays()
+        dao.clearAllExpenses()
+        dao.clearAllVehicleCostItems()
+        dao.clearAllFuelChargeRecords()
         dao.clearVehicleProfile()
         dao.saveVehicleProfile(
             VehicleProfile(
@@ -52,15 +70,13 @@ class AppRepository(private val dao: AppDao) {
                 averageConsumption = 0.0,
                 fuelOrEnergyPrice = 0.0,
                 currentMileage = 0.0,
-                dailyGoal = 250.0,
-                weeklyGoal = 1500.0,
+                monthlyGoal = 6000.0,
                 isProfileConfigured = false
             )
         )
     }
 
     suspend fun seedInitialDataIfEmpty() {
-        // App starts with zeroed data as requested.
         val existingProfile = vehicleProfile.firstOrNull()
         if (existingProfile == null) {
             dao.saveVehicleProfile(
@@ -74,8 +90,7 @@ class AppRepository(private val dao: AppDao) {
                     averageConsumption = 0.0,
                     fuelOrEnergyPrice = 0.0,
                     currentMileage = 0.0,
-                    dailyGoal = 250.0,
-                    weeklyGoal = 1500.0,
+                    monthlyGoal = 6000.0,
                     isProfileConfigured = false
                 )
             )

@@ -4,21 +4,23 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.FuelLog
-import com.example.model.MaintenanceItem
-import com.example.model.Trip
+import com.example.model.FuelChargeRecord
+import com.example.model.VehicleCostItem
 import com.example.model.VehicleProfile
+import com.example.model.WorkDay
 
 @Database(
     entities = [
-        Trip::class,
+        DailyEarning::class,
+        WorkDay::class,
         Expense::class,
-        FuelLog::class,
-        MaintenanceItem::class,
-        VehicleProfile::class
+        VehicleProfile::class,
+        VehicleCostItem::class,
+        FuelChargeRecord::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

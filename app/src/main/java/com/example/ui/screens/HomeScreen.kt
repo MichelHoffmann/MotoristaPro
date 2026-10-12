@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,39 +20,87 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.DailyEarning
 import com.example.model.Expense
-import com.example.model.Trip
 import com.example.model.VehicleProfile
-import com.example.ui.components.PlatformBadge
+import com.example.model.ViabilityCalculationResult
+import com.example.model.WorkDay
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
+import java.util.Calendar
 
 @Composable
 fun HomeScreen(
-    trips: List<Trip>,
+    dailyEarnings: List<DailyEarning>,
     expenses: List<Expense>,
+    workDays: List<WorkDay>,
     vehicleProfile: VehicleProfile,
-    onAddTripClick: () -> Unit,
+    viabilityResult: ViabilityCalculationResult,
+    onAddDailyWorkClick: () -> Unit,
     onAddExpenseClick: () -> Unit,
-    onNavigateToTrips: () -> Unit,
-    onNavigateToExpenses: () -> Unit,
+    onNavigateToPlanning: () -> Unit,
+    onNavigateToVehicle: () -> Unit,
     onOpenProfileMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val todayDateStr = MainViewModel.getTodayDateString()
-    val todayTrips = trips.filter { it.dateStr == todayDateStr || (trips.isNotEmpty() && it.dateStr == trips.first().dateStr) }
-    val todayExpenses = expenses.filter { it.dateStr == todayDateStr || (expenses.isNotEmpty() && it.dateStr == expenses.first().dateStr) }
+    val todayEarningRecord = dailyEarnings.find { it.dateStr == todayDateStr }
+    val todayExpensesList = expenses.filter { it.dateStr == todayDateStr }
 
-    // Real dynamic totals (starts at zero if no records exist)
-    val totalEarnings = todayTrips.sumOf { it.netAmount }
-    val totalExpensesAmount = todayExpenses.sumOf { it.amount }
-    val netProfit = totalEarnings - totalExpensesAmount
-    val tripsCount = todayTrips.size
-    val totalKm = todayTrips.sumOf { it.distanceKm }
-    val ratePerKm = if (totalKm > 0) totalEarnings / totalKm else 0.0
+    // Today's values
+    val todayEarnings = todayEarningRecord?.totalAmount ?: 0.0
+    val todayTripsCount = todayEarningRecord?.tripsCount ?: 0
+    val todayKmDriven = todayEarningRecord?.kmDriven ?: 0.0
+    val todayExpenses = todayExpensesList.sumOf { it.amount }
+    val todayNetProfit = todayEarnings - todayExpenses
+    val todayRatePerKm = if (todayKmDriven > 0) todayEarnings / todayKmDriven else 0.0
 
-    val goal = if (vehicleProfile.dailyGoal > 0) vehicleProfile.dailyGoal else 250.0
-    val progressPercent = if (goal > 0) ((totalEarnings / goal) * 100).toInt().coerceIn(0, 100) else 0
+    // Monthly & Planning Calculations
+    val cal = Calendar.getInstance()
+    val thisYear = cal.get(Calendar.YEAR)
+    val thisMonth = cal.get(Calendar.MONTH)
+    val todayDay = cal.get(Calendar.DAY_OF_MONTH)
+
+    val monthEarnings = dailyEarnings.filter {
+        val parts = it.dateStr.split("/")
+        if (parts.size == 3) {
+            val dMonth = parts[1].toIntOrNull()?.minus(1)
+            val dYear = parts[2].toIntOrNull()
+            dMonth == thisMonth && dYear == thisYear
+        } else false
+    }
+    val totalEarnedThisMonth = monthEarnings.sumOf { it.totalAmount }
+
+    val monthWorkDays = workDays.filter {
+        val parts = it.dateStr.split("/")
+        if (parts.size == 3) {
+            val dMonth = parts[1].toIntOrNull()?.minus(1)
+            val dYear = parts[2].toIntOrNull()
+            dMonth == thisMonth && dYear == thisYear && it.isWorkDay
+        } else false
+    }
+
+    val remainingWorkDays = monthWorkDays.count {
+        val parts = it.dateStr.split("/")
+        val dayNum = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        dayNum >= todayDay
+    }
+
+    val monthlyGoal = vehicleProfile.monthlyGoal
+    val remainingMonthlyAmount = (monthlyGoal - totalEarnedThisMonth).coerceAtLeast(0.0)
+    val requiredDailyGoal = if (remainingWorkDays > 0) {
+        remainingMonthlyAmount / remainingWorkDays
+    } else {
+        if (remainingMonthlyAmount > 0) remainingMonthlyAmount else 0.0
+    }
+
+    val dailyProgressPercent = if (requiredDailyGoal > 0) {
+        ((todayEarnings / requiredDailyGoal) * 100).toInt().coerceIn(0, 100)
+    } else if (todayEarnings > 0) 100 else 0
+
+    val monthlyProgressPercent = if (monthlyGoal > 0) {
+        ((totalEarnedThisMonth / monthlyGoal) * 100).toInt().coerceIn(0, 100)
+    } else 0
 
     Column(
         modifier = modifier
@@ -83,60 +131,60 @@ fun HomeScreen(
                 )
             }
 
-            // Profile / New User Menu button
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(CardDark)
-                    .clickable { onOpenProfileMenu() }
-                    .testTag("btn_open_profile_menu"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Person,
-                    contentDescription = "Menu do Usuário e Veículo",
-                    tint = EmeraldGreen,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-
-        // Vehicle Info Badge
-        if (vehicleProfile.modelName.isNotBlank()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CardDark.copy(alpha = 0.6f))
-                    .clickable { onOpenProfileMenu() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Vehicle Shortcut
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(CardDark)
+                        .clickable { onNavigateToVehicle() }
+                        .testTag("btn_vehicle_shortcut"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (vehicleProfile.isElectric) Icons.Default.ElectricCar else Icons.Default.DirectionsCar,
-                        contentDescription = null,
+                        imageVector = Icons.Outlined.DirectionsCar,
+                        contentDescription = "Meu Veículo",
                         tint = EmeraldGreen,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "${vehicleProfile.modelName} ${vehicleProfile.manufacturingYear} • ${vehicleProfile.fuelType}",
-                        fontSize = 12.sp,
-                        color = TextWhite,
-                        fontWeight = FontWeight.Medium
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
-                Text(
-                    text = if (vehicleProfile.isElectric) "${vehicleProfile.averageConsumption} km/kWh" else "${vehicleProfile.averageConsumption} km/L",
-                    fontSize = 11.sp,
-                    color = TextSecondary
-                )
+                // Calendar Shortcut
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(CardDark)
+                        .clickable { onNavigateToPlanning() }
+                        .testTag("btn_planning_shortcut"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CalendarMonth,
+                        contentDescription = "Planejamento e Calendário",
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Profile button
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(CardDark)
+                        .clickable { onOpenProfileMenu() }
+                        .testTag("btn_open_profile_menu"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Person,
+                        contentDescription = "Menu do Usuário e Veículo",
+                        tint = TextWhite,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
 
@@ -162,10 +210,10 @@ fun HomeScreen(
                 )
 
                 Text(
-                    text = MainViewModel.formatCurrency(netProfit),
+                    text = MainViewModel.formatCurrency(todayNetProfit),
                     fontSize = 34.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (netProfit >= 0) ProfitGreen else ExpenseRedSoft
+                    color = if (todayNetProfit >= 0) ProfitGreen else ExpenseRedSoft
                 )
 
                 Row(
@@ -173,14 +221,14 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "Ganhos: ${MainViewModel.formatCurrency(totalEarnings)}",
+                        text = "Ganhos: ${MainViewModel.formatCurrency(todayEarnings)}",
                         fontSize = 13.sp,
                         color = TextWhite,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(text = "|", color = TextMuted, fontSize = 13.sp)
                     Text(
-                        text = "Despesas: ${MainViewModel.formatCurrency(totalExpensesAmount)}",
+                        text = "Despesas: ${MainViewModel.formatCurrency(todayExpenses)}",
                         fontSize = 13.sp,
                         color = ExpenseRedSoft,
                         fontWeight = FontWeight.SemiBold
@@ -194,7 +242,7 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Corridas
+            // Corridas do dia
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -206,7 +254,7 @@ fun HomeScreen(
                 ) {
                     Text("Corridas", fontSize = 12.sp, color = TextSecondary)
                     Text(
-                        text = "$tripsCount",
+                        text = "$todayTripsCount",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
@@ -214,7 +262,7 @@ fun HomeScreen(
                 }
             }
 
-            // Km Rodados
+            // Km Rodados no dia
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -226,7 +274,7 @@ fun HomeScreen(
                 ) {
                     Text("Km rodados", fontSize = 12.sp, color = TextSecondary)
                     Text(
-                        text = MainViewModel.formatKm(totalKm),
+                        text = MainViewModel.formatKm(todayKmDriven),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
@@ -234,7 +282,7 @@ fun HomeScreen(
                 }
             }
 
-            // R$/km
+            // R$/km no dia
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -246,7 +294,7 @@ fun HomeScreen(
                 ) {
                     Text("R$/km", fontSize = 12.sp, color = TextSecondary)
                     Text(
-                        text = String.format("R$ %.2f", ratePerKm).replace(".", ","),
+                        text = String.format("R$ %.2f", todayRatePerKm).replace(".", ","),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
@@ -255,16 +303,81 @@ fun HomeScreen(
             }
         }
 
-        // Meta do Dia Card
+        // Vehicle Viability Pill Card: Quanto devo aceitar por km e por hora
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = CardHighlight),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigateToVehicle() }
+                .testTag("card_viability_banner")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EmeraldGreen.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Tarifas Mínimas Recomendadas",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmeraldGreen
+                    )
+                    Text(
+                        text = if (viabilityResult.hasSufficientData) {
+                            "Aceite no mínimo R$ ${String.format("%.2f", viabilityResult.recommendedMinRatePerKm).replace(".", ",")}/km ou R$ ${String.format("%.2f", viabilityResult.recommendedMinRatePerHour).replace(".", ",")}/h"
+                        } else {
+                            "Configure o consumo e custos do veículo para calcular suas tarifas mínimas"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextWhite
+                    )
+                    Text(
+                        text = "Custo do carro: ~R$ ${String.format("%.2f", viabilityResult.estimatedCostPerKm).replace(".", ",")}/km (inclui combustível e deslocamento vazio)",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = EmeraldGreen
+                )
+            }
+        }
+
+        // Dynamic Daily Goal Card (calculated from Monthly Goal & Remaining Work Days)
+        Card(
+            shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigateToPlanning() }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -272,22 +385,29 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Column {
+                        Text(
+                            text = "Meta de hoje: ${MainViewModel.formatCurrency(requiredDailyGoal)}",
+                            fontSize = 15.sp,
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Para bater ${MainViewModel.formatCurrency(monthlyGoal)} no mês ($remainingWorkDays dias restantes)",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
                     Text(
-                        text = "Meta do dia (${MainViewModel.formatCurrency(goal)})",
-                        fontSize = 14.sp,
-                        color = TextWhite,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "$progressPercent%",
-                        fontSize = 14.sp,
+                        text = "$dailyProgressPercent%",
+                        fontSize = 15.sp,
                         color = EmeraldGreen,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 LinearProgressIndicator(
-                    progress = { progressPercent / 100f },
+                    progress = { dailyProgressPercent / 100f },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
@@ -296,16 +416,18 @@ fun HomeScreen(
                     trackColor = SurfaceDark
                 )
 
-                val remaining = (goal - totalEarnings).coerceAtLeast(0.0)
-                if (remaining > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "Faltam ${MainViewModel.formatCurrency(remaining)} para bater a meta de hoje",
+                        text = "Mês: ${MainViewModel.formatCurrency(totalEarnedThisMonth)} / ${MainViewModel.formatCurrency(monthlyGoal)} ($monthlyProgressPercent%)",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
-                } else {
                     Text(
-                        text = "Parabéns! Meta do dia atingida! 🎉",
+                        text = "Ver calendário >",
                         fontSize = 12.sp,
                         color = EmeraldGreen,
                         fontWeight = FontWeight.SemiBold
@@ -314,13 +436,13 @@ fun HomeScreen(
             }
         }
 
-        // Quick Action Buttons
+        // Action Buttons: + Registrar ganho do dia & - Registrar despesa
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
-                onClick = onAddTripClick,
+                onClick = onAddDailyWorkClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
@@ -336,7 +458,7 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Registrar ganho",
+                    text = "Registrar faturamento do dia",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -372,102 +494,55 @@ fun HomeScreen(
             }
         }
 
-        // Recent Trips Section
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Planning card banner
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigateToPlanning() }
         ) {
-            Text(
-                text = "Últimas corridas",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextWhite
-            )
-            if (todayTrips.isNotEmpty()) {
-                Text(
-                    text = "Ver todas",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = EmeraldGreen,
-                    modifier = Modifier.clickable { onNavigateToTrips() }
-                )
-            }
-        }
-
-        if (todayTrips.isEmpty()) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark),
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EmeraldGreen.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DirectionsCar,
+                        imageVector = Icons.Outlined.CalendarMonth,
                         contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(32.dp)
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(24.dp)
                     )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Nenhuma corrida registrada hoje",
+                        text = "Planeje seus dias de trabalho e feriados",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         color = TextWhite
                     )
                     Text(
-                        text = "Toque em '+ Registrar ganho' acima para lançar sua primeira corrida do dia.",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        text = "Veja feriados nacionais, do Acre e Rio Branco para ajustar sua escala e meta diária.",
+                        fontSize = 11.sp,
+                        color = TextSecondary
                     )
                 }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                todayTrips.take(4).forEach { trip ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CardDark)
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PlatformBadge(platform = trip.platform)
-                            Column {
-                                Text(
-                                    text = MainViewModel.formatCurrency(trip.netAmount),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextWhite
-                                )
-                                Text(
-                                    text = "${trip.distanceKm} km  •  ${trip.durationMinutes} min",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
 
-                        Text(
-                            text = trip.timeStr,
-                            fontSize = 13.sp,
-                            color = TextSecondary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = TextSecondary
+                )
             }
         }
 

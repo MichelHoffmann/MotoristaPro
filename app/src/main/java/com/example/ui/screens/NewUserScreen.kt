@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.VehiclePowertrain
 import com.example.model.VehicleProfile
 import com.example.ui.theme.*
 
@@ -38,7 +39,7 @@ fun NewUserScreen(
         consumption: Double,
         price: Double,
         mileage: Double,
-        dailyGoal: Double
+        monthlyGoal: Double
     ) -> Unit,
     onCancel: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -46,6 +47,7 @@ fun NewUserScreen(
     var name by remember { mutableStateOf(currentProfile.driverName) }
     var model by remember { mutableStateOf(currentProfile.modelName) }
     var year by remember { mutableStateOf(currentProfile.manufacturingYear) }
+    var selectedPowertrain by remember { mutableStateOf(currentProfile.vehiclePowertrain) }
     var fuelType by remember { mutableStateOf(if (currentProfile.fuelType.isNotBlank()) currentProfile.fuelType else "Flex") }
     var isElectric by remember { mutableStateOf(currentProfile.isElectric) }
 
@@ -58,18 +60,15 @@ fun NewUserScreen(
     var mileageText by remember {
         mutableStateOf(if (currentProfile.currentMileage > 0) currentProfile.currentMileage.toInt().toString() else "0")
     }
-    var dailyGoalText by remember {
-        mutableStateOf(if (currentProfile.dailyGoal > 0) currentProfile.dailyGoal.toInt().toString() else "250")
+    var monthlyGoalText by remember {
+        mutableStateOf(if (currentProfile.monthlyGoal > 0) currentProfile.monthlyGoal.toInt().toString() else "6000")
     }
 
-    val fuelOptions = listOf(
-        "Flex",
-        "Gasolina",
-        "Etanol",
-        "GNV",
-        "Diesel",
-        "Elétrico",
-        "Híbrido"
+    val powertrainOptions = listOf(
+        VehiclePowertrain.COMBUSTAO,
+        VehiclePowertrain.HIBRIDO,
+        VehiclePowertrain.HIBRIDO_PLUGIN,
+        VehiclePowertrain.ELETRICO
     )
 
     Column(
@@ -113,7 +112,7 @@ fun NewUserScreen(
                         color = TextWhite
                     )
                     Text(
-                        text = "Configuração do motorista",
+                        text = "Configuração do motorista e veículo",
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
@@ -194,7 +193,7 @@ fun NewUserScreen(
                     value = model,
                     onValueChange = { model = it },
                     label = { Text("Marca e Modelo") },
-                    placeholder = { Text("Ex: Fiat Uno Way, Onix, etc.") },
+                    placeholder = { Text("Ex: Fiat Argo, BYD Dolphin, Corolla") },
                     leadingIcon = {
                         Icon(Icons.Outlined.DirectionsCar, contentDescription = null, tint = TextSecondary)
                     },
@@ -248,7 +247,7 @@ fun NewUserScreen(
             }
         }
 
-        // Section 3: Combustível / Energia
+        // Section 3: Tipo de Veículo e Propulsão (Combustão, Híbrido, Híbrido plug-in, Elétrico)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -261,45 +260,50 @@ fun NewUserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "3. Tipo de Combustível / Propulsão",
+                    text = "3. Tipo de Propulsão do Veículo",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = EmeraldGreen
                 )
 
-                // Chips for fuel type
+                // 4 powertrain buttons
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    fuelOptions.chunked(3).forEach { chunk ->
+                    powertrainOptions.chunked(2).forEach { chunk ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            chunk.forEach { option ->
-                                val isSelected = fuelType.equals(option, ignoreCase = true)
+                            chunk.forEach { pt ->
+                                val isSelected = selectedPowertrain == pt
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(if (isSelected) EmeraldGreen else SurfaceDark)
                                         .clickable {
-                                            fuelType = option
-                                            isElectric = (option == "Elétrico")
-                                            if (isElectric) {
+                                            selectedPowertrain = pt
+                                            isElectric = (pt == VehiclePowertrain.ELETRICO)
+                                            fuelType = pt.displayName
+                                            if (pt == VehiclePowertrain.ELETRICO) {
                                                 consumptionText = "6.5"
                                                 priceText = "0.85"
+                                            } else if (pt == VehiclePowertrain.HIBRIDO_PLUGIN) {
+                                                consumptionText = "16.0"
+                                                priceText = "5.89"
                                             } else {
-                                                if (consumptionText == "6.5") consumptionText = "11.5"
-                                                if (priceText == "0.85") priceText = "5.89"
+                                                consumptionText = "11.5"
+                                                priceText = "5.89"
                                             }
                                         }
-                                        .padding(vertical = 10.dp),
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = option,
+                                        text = pt.displayName,
                                         fontSize = 12.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color.White else TextSecondary
+                                        color = if (isSelected) Color.White else TextSecondary,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
                                 }
                             }
@@ -347,7 +351,7 @@ fun NewUserScreen(
             }
         }
 
-        // Section 4: Metas Financeiras
+        // Section 4: Meta Financeira Mensal
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -360,17 +364,17 @@ fun NewUserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "4. Meta Financeira Diária",
+                    text = "4. Meta Financeira Mensal",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = EmeraldGreen
                 )
 
                 OutlinedTextField(
-                    value = dailyGoalText,
-                    onValueChange = { dailyGoalText = it },
-                    label = { Text("Meta de Ganhos por Dia (R$)") },
-                    placeholder = { Text("Ex: 250.00") },
+                    value = monthlyGoalText,
+                    onValueChange = { monthlyGoalText = it },
+                    label = { Text("Meta de Faturamento Mensal (R$)") },
+                    placeholder = { Text("Ex: 6000.00") },
                     leadingIcon = {
                         Icon(Icons.Outlined.TrackChanges, contentDescription = null, tint = EmeraldGreen)
                     },
@@ -378,7 +382,7 @@ fun NewUserScreen(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_daily_goal"),
+                        .testTag("input_monthly_goal"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = EmeraldGreen,
                         unfocusedBorderColor = BorderDark
@@ -386,7 +390,7 @@ fun NewUserScreen(
                 )
 
                 Text(
-                    text = "O app iniciará com todos os ganhos e despesas zerados para você começar seu controle do zero.",
+                    text = "A sua meta diária e tarifação mínima por km serão calculadas automaticamente no aplicativo com base no valor restante do mês e nos dias marcados no calendário.",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -399,14 +403,14 @@ fun NewUserScreen(
                 val consumption = consumptionText.replace(",", ".").toDoubleOrNull() ?: 11.5
                 val price = priceText.replace(",", ".").toDoubleOrNull() ?: 5.89
                 val mileage = mileageText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                val goal = dailyGoalText.replace(",", ".").toDoubleOrNull() ?: 250.0
+                val goal = monthlyGoalText.replace(",", ".").toDoubleOrNull() ?: 6000.0
 
                 onSaveProfile(
                     name.ifBlank { "Motorista" },
                     model.ifBlank { "Meu Veículo" },
                     year.ifBlank { "2022" },
-                    fuelType,
-                    isElectric,
+                    selectedPowertrain.displayName,
+                    (selectedPowertrain == VehiclePowertrain.ELETRICO),
                     consumption,
                     price,
                     mileage,

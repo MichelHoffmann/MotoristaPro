@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.VehiclePowertrain
 import com.example.model.VehicleProfile
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
@@ -31,6 +32,7 @@ import com.example.ui.viewmodel.MainViewModel
 fun SettingsScreen(
     vehicleProfile: VehicleProfile,
     onOpenNewUserMenu: () -> Unit,
+    onNavigateToVehicle: () -> Unit,
     onResetAllData: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -41,7 +43,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text("Zerar todos os dados?") },
-            text = { Text("Isso apagará todas as corridas, despesas e abastecimentos registrados, reiniciando o aplicativo com valores zerados.") },
+            text = { Text("Isso apagará todos os faturamentos e despesas registrados, reiniciando o aplicativo com valores zerados.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -78,13 +80,13 @@ fun SettingsScreen(
             fontWeight = FontWeight.Bold
         )
 
-        // Vehicle & Driver Profile Card
+        // Vehicle & Driver Profile Card - Links directly to Meu Veiculo
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onOpenNewUserMenu() }
+                .clickable { onNavigateToVehicle() }
                 .testTag("card_user_vehicle_profile")
         ) {
             Row(
@@ -102,7 +104,11 @@ fun SettingsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (vehicleProfile.isElectric) Icons.Default.ElectricCar else Icons.Default.DirectionsCar,
+                        imageVector = when (vehicleProfile.vehiclePowertrain) {
+                            VehiclePowertrain.ELETRICO -> Icons.Default.ElectricCar
+                            VehiclePowertrain.HIBRIDO, VehiclePowertrain.HIBRIDO_PLUGIN -> Icons.Default.ElectricBolt
+                            else -> Icons.Default.DirectionsCar
+                        },
                         contentDescription = "Carro",
                         tint = EmeraldGreen,
                         modifier = Modifier.size(30.dp)
@@ -123,39 +129,63 @@ fun SettingsScreen(
                         color = TextWhite
                     )
                     Text(
-                        text = "${vehicleProfile.fuelType} • ${vehicleProfile.averageConsumption} ${if (vehicleProfile.isElectric) "km/kWh" else "km/L"} • ${String.format("%,d km", vehicleProfile.currentMileage.toInt())}",
+                        text = "${vehicleProfile.vehiclePowertrain.displayName} • ${vehicleProfile.averageConsumption} ${if (vehicleProfile.isElectric) "km/kWh" else "km/L"} • ${String.format("%,d km", vehicleProfile.currentMileage.toInt())}",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
                 }
 
                 Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Editar",
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "Abrir Meu Veículo",
                     tint = EmeraldGreen,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // Action Button: Menu de Novo Usuário / Editar Cadastro Completo
-        Button(
-            onClick = onOpenNewUserMenu,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("btn_menu_new_user"),
-            colors = ButtonDefaults.buttonColors(containerColor = CardHighlight),
-            shape = RoundedCornerShape(12.dp)
+        // Action Buttons: Meu Veículo (Custos e Viabilidade) & Novo Usuário
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = EmeraldGreen)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Menu de Novo Usuário & Veículo",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextWhite
-            )
+            Button(
+                onClick = onNavigateToVehicle,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .testTag("btn_meu_veiculo"),
+                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.DirectionsCar, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Meu Veículo",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+
+            Button(
+                onClick = onOpenNewUserMenu,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .testTag("btn_menu_new_user"),
+                colors = ButtonDefaults.buttonColors(containerColor = CardHighlight),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Outlined.Person, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Editar Perfil",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite
+                )
+            }
         }
 
         // Settings Items List
@@ -166,25 +196,33 @@ fun SettingsScreen(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 SettingsRow(
+                    icon = Icons.Outlined.DirectionsCar,
+                    title = "Custos do Veículo e Tarifas Mínimas",
+                    value = "Gerenciar",
+                    onClick = onNavigateToVehicle
+                )
+                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+
+                SettingsRow(
                     icon = Icons.Outlined.LocalGasStation,
                     title = if (vehicleProfile.isElectric) "Preço da Energia" else "Preço Médio Combustível",
                     value = String.format("R$ %.2f", vehicleProfile.fuelOrEnergyPrice).replace(".", ","),
-                    onClick = onOpenNewUserMenu
+                    onClick = onNavigateToVehicle
                 )
                 HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
 
                 SettingsRow(
                     icon = Icons.Outlined.TrackChanges,
-                    title = "Meta diária de ganhos",
-                    value = "${MainViewModel.formatCurrency(vehicleProfile.dailyGoal)}/dia",
-                    onClick = onOpenNewUserMenu
+                    title = "Meta mensal cadastrada",
+                    value = "${MainViewModel.formatCurrency(vehicleProfile.monthlyGoal)}/mês (${if (vehicleProfile.isGoalNetProfit) "Líquido" else "Bruto"})",
+                    onClick = onNavigateToVehicle
                 )
                 HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
 
                 SettingsRow(
                     icon = Icons.Outlined.Apps,
                     title = "Plataformas ativas",
-                    value = vehicleProfile.activePlatforms,
+                    value = "99, Uber, InDrive",
                     onClick = {
                         Toast.makeText(context, "Plataformas configuradas: 99, Uber, InDrive, Particular", Toast.LENGTH_SHORT).show()
                     }

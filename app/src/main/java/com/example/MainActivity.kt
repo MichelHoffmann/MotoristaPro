@@ -6,7 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -18,25 +18,25 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.components.*
+import com.example.ui.components.AddExpenseDialog
+import com.example.ui.components.MoreSheet
+import com.example.ui.components.RecordDailyWorkDialog
 import com.example.ui.screens.*
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
 
 enum class AppScreen {
     HOME,
+    PLANNING,
     REPORTS,
-    TRIPS,
-    FUEL,
     EXPENSES,
-    MAINTENANCE,
     SETTINGS,
+    VEHICLE,
     NEW_USER
 }
 
@@ -61,22 +61,20 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     var showMoreSheet by remember { mutableStateOf(false) }
 
     // Dialog visibility states
-    var showAddTripDialog by remember { mutableStateOf(false) }
+    var showRecordDailyWorkDialog by remember { mutableStateOf(false) }
     var showAddExpenseDialog by remember { mutableStateOf(false) }
-    var showAddFuelDialog by remember { mutableStateOf(false) }
-    var showAddMaintenanceDialog by remember { mutableStateOf(false) }
 
     // Observe data from ViewModel
-    val trips by viewModel.trips.collectAsStateWithLifecycle()
+    val dailyEarnings by viewModel.dailyEarnings.collectAsStateWithLifecycle()
+    val workDays by viewModel.workDays.collectAsStateWithLifecycle()
     val expenses by viewModel.expenses.collectAsStateWithLifecycle()
-    val fuelLogs by viewModel.fuelLogs.collectAsStateWithLifecycle()
-    val maintenance by viewModel.maintenance.collectAsStateWithLifecycle()
     val vehicleProfile by viewModel.vehicleProfile.collectAsStateWithLifecycle()
+    val vehicleCostItems by viewModel.vehicleCostItems.collectAsStateWithLifecycle()
+    val fuelChargeRecords by viewModel.fuelChargeRecords.collectAsStateWithLifecycle()
+    val viabilityResult by viewModel.viabilityResult.collectAsStateWithLifecycle()
+    val currentYearMonth by viewModel.currentYearMonth.collectAsStateWithLifecycle()
 
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
-    val selectedTripTab by viewModel.selectedTripTab.collectAsStateWithLifecycle()
-    val selectedFuelTab by viewModel.selectedFuelTab.collectAsStateWithLifecycle()
-    val selectedMaintenanceTab by viewModel.selectedMaintenanceTab.collectAsStateWithLifecycle()
     val selectedExpenseTab by viewModel.selectedExpenseTab.collectAsStateWithLifecycle()
 
     // Handle back button on sub-screens
@@ -90,7 +88,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     if (!vehicleProfile.isProfileConfigured || currentScreen == AppScreen.NEW_USER) {
         NewUserScreen(
             currentProfile = vehicleProfile,
-            onSaveProfile = { name, model, year, fuelType, isElectric, consumption, price, mileage, dailyGoal ->
+            onSaveProfile = { name, model, year, fuelType, isElectric, consumption, price, mileage, monthlyGoal ->
                 viewModel.saveUserProfile(
                     name = name,
                     model = model,
@@ -100,7 +98,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     avgConsumption = consumption,
                     fuelOrEnergyPrice = price,
                     currentMileage = mileage,
-                    dailyGoal = dailyGoal
+                    monthlyGoal = monthlyGoal
                 )
                 currentScreen = AppScreen.HOME
             },
@@ -149,7 +147,35 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     modifier = Modifier.testTag("nav_home")
                 )
 
-                // 2. Relatórios
+                // 2. Planejamento (Calendário, Metas & Feriados)
+                NavigationBarItem(
+                    selected = currentScreen == AppScreen.PLANNING,
+                    onClick = { currentScreen = AppScreen.PLANNING },
+                    icon = {
+                        Icon(
+                            imageVector = if (currentScreen == AppScreen.PLANNING) Icons.Filled.CalendarMonth else Icons.Outlined.CalendarMonth,
+                            contentDescription = "Planejamento",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = "Planejamento",
+                            fontSize = 11.sp,
+                            fontWeight = if (currentScreen == AppScreen.PLANNING) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = EmeraldGreen,
+                        selectedTextColor = EmeraldGreen,
+                        indicatorColor = EmeraldGreen.copy(alpha = 0.15f),
+                        unselectedIconColor = TextSecondary,
+                        unselectedTextColor = TextSecondary
+                    ),
+                    modifier = Modifier.testTag("nav_planning")
+                )
+
+                // 3. Relatórios
                 NavigationBarItem(
                     selected = currentScreen == AppScreen.REPORTS,
                     onClick = { currentScreen = AppScreen.REPORTS },
@@ -177,22 +203,22 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     modifier = Modifier.testTag("nav_reports")
                 )
 
-                // 3. Corridas
+                // 4. Despesas
                 NavigationBarItem(
-                    selected = currentScreen == AppScreen.TRIPS,
-                    onClick = { currentScreen = AppScreen.TRIPS },
+                    selected = currentScreen == AppScreen.EXPENSES,
+                    onClick = { currentScreen = AppScreen.EXPENSES },
                     icon = {
                         Icon(
-                            imageVector = if (currentScreen == AppScreen.TRIPS) Icons.Filled.DirectionsCar else Icons.Outlined.DirectionsCar,
-                            contentDescription = "Corridas",
+                            imageVector = if (currentScreen == AppScreen.EXPENSES) Icons.Filled.ReceiptLong else Icons.Outlined.ReceiptLong,
+                            contentDescription = "Despesas",
                             modifier = Modifier.size(22.dp)
                         )
                     },
                     label = {
                         Text(
-                            text = "Corridas",
+                            text = "Despesas",
                             fontSize = 11.sp,
-                            fontWeight = if (currentScreen == AppScreen.TRIPS) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (currentScreen == AppScreen.EXPENSES) FontWeight.Bold else FontWeight.Normal
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
@@ -202,43 +228,11 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                         unselectedIconColor = TextSecondary,
                         unselectedTextColor = TextSecondary
                     ),
-                    modifier = Modifier.testTag("nav_trips")
+                    modifier = Modifier.testTag("nav_expenses")
                 )
 
-                // 4. Combustível / Energia
-                NavigationBarItem(
-                    selected = currentScreen == AppScreen.FUEL,
-                    onClick = { currentScreen = AppScreen.FUEL },
-                    icon = {
-                        Icon(
-                            imageVector = if (currentScreen == AppScreen.FUEL) {
-                                if (vehicleProfile.isElectric) Icons.Filled.ElectricBolt else Icons.Filled.LocalGasStation
-                            } else {
-                                if (vehicleProfile.isElectric) Icons.Outlined.ElectricBolt else Icons.Outlined.LocalGasStation
-                            },
-                            contentDescription = if (vehicleProfile.isElectric) "Energia" else "Combustível",
-                            modifier = Modifier.size(22.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = if (vehicleProfile.isElectric) "Energia" else "Combustível",
-                            fontSize = 11.sp,
-                            fontWeight = if (currentScreen == AppScreen.FUEL) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = EmeraldGreen,
-                        selectedTextColor = EmeraldGreen,
-                        indicatorColor = EmeraldGreen.copy(alpha = 0.15f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    ),
-                    modifier = Modifier.testTag("nav_fuel")
-                )
-
-                // 5. Mais
-                val isMoreScreen = currentScreen in listOf(AppScreen.EXPENSES, AppScreen.MAINTENANCE, AppScreen.SETTINGS)
+                // 5. Mais / Meu Veículo / Configurações
+                val isMoreScreen = currentScreen == AppScreen.SETTINGS || currentScreen == AppScreen.VEHICLE
                 NavigationBarItem(
                     selected = isMoreScreen,
                     onClick = { showMoreSheet = true },
@@ -275,36 +269,34 @@ fun MainAppScaffold(viewModel: MainViewModel) {
         ) {
             when (currentScreen) {
                 AppScreen.HOME -> HomeScreen(
-                    trips = trips,
+                    dailyEarnings = dailyEarnings,
                     expenses = expenses,
+                    workDays = workDays,
                     vehicleProfile = vehicleProfile,
-                    onAddTripClick = { showAddTripDialog = true },
+                    viabilityResult = viabilityResult,
+                    onAddDailyWorkClick = { showRecordDailyWorkDialog = true },
                     onAddExpenseClick = { showAddExpenseDialog = true },
-                    onNavigateToTrips = { currentScreen = AppScreen.TRIPS },
-                    onNavigateToExpenses = { currentScreen = AppScreen.EXPENSES },
+                    onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
+                    onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER }
                 )
+                AppScreen.PLANNING -> PlanningScreen(
+                    currentYearMonth = currentYearMonth,
+                    workDays = workDays,
+                    dailyEarnings = dailyEarnings,
+                    vehicleProfile = vehicleProfile,
+                    onNextMonth = { viewModel.nextMonth() },
+                    onPreviousMonth = { viewModel.previousMonth() },
+                    onToggleWorkDay = { viewModel.toggleWorkDay(it) },
+                    onApplySchedule = { viewModel.applyQuickSchedule(it) },
+                    onUpdateMonthlyGoal = { viewModel.updateMonthlyGoal(it) }
+                )
                 AppScreen.REPORTS -> ReportsScreen(
-                    trips = trips,
+                    dailyEarnings = dailyEarnings,
                     expenses = expenses,
                     selectedPeriod = selectedPeriod,
                     onPeriodSelected = { viewModel.setPeriodFilter(it) },
-                    chartData = viewModel.getDynamicChartData(trips, expenses)
-                )
-                AppScreen.TRIPS -> TripsScreen(
-                    trips = trips,
-                    selectedFilter = selectedTripTab,
-                    onFilterSelected = { viewModel.setTripTabFilter(it) },
-                    onAddTripClick = { showAddTripDialog = true },
-                    onDeleteTrip = { viewModel.deleteTrip(it) }
-                )
-                AppScreen.FUEL -> FuelScreen(
-                    fuelLogs = fuelLogs,
-                    vehicleProfile = vehicleProfile,
-                    selectedFilter = selectedFuelTab,
-                    onFilterSelected = { viewModel.setFuelTabFilter(it) },
-                    onAddFuelClick = { showAddFuelDialog = true },
-                    onDeleteFuelLog = { viewModel.deleteFuelLog(it) }
+                    chartData = viewModel.getDynamicChartData(dailyEarnings, expenses)
                 )
                 AppScreen.EXPENSES -> ExpensesScreen(
                     expenses = expenses,
@@ -313,17 +305,23 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onAddExpenseClick = { showAddExpenseDialog = true },
                     onDeleteExpense = { viewModel.deleteExpense(it) }
                 )
-                AppScreen.MAINTENANCE -> MaintenanceScreen(
-                    items = maintenance,
-                    selectedFilter = selectedMaintenanceTab,
-                    onFilterSelected = { viewModel.setMaintenanceTabFilter(it) },
-                    onAddMaintenanceClick = { showAddMaintenanceDialog = true },
-                    onToggleCompleted = { viewModel.toggleMaintenanceStatus(it) }
-                )
                 AppScreen.SETTINGS -> SettingsScreen(
                     vehicleProfile = vehicleProfile,
                     onOpenNewUserMenu = { currentScreen = AppScreen.NEW_USER },
+                    onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onResetAllData = { viewModel.resetAllDataToZero() }
+                )
+                AppScreen.VEHICLE -> VehicleSectionScreen(
+                    vehicleProfile = vehicleProfile,
+                    vehicleCostItems = vehicleCostItems,
+                    fuelChargeRecords = fuelChargeRecords,
+                    viabilityResult = viabilityResult,
+                    onUpdateProfile = { viewModel.updateFullVehicleProfile(it) },
+                    onAddCostItem = { viewModel.addVehicleCostItem(it) },
+                    onDeleteCostItem = { viewModel.deleteVehicleCostItem(it) },
+                    onAddFuelChargeRecord = { viewModel.addFuelChargeRecord(it) },
+                    onDeleteFuelChargeRecord = { viewModel.deleteFuelChargeRecord(it) },
+                    onNavigateBack = { currentScreen = AppScreen.HOME }
                 )
                 AppScreen.NEW_USER -> {
                     // Handled above before Scaffold
@@ -336,53 +334,29 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     if (showMoreSheet) {
         MoreSheet(
             onDismiss = { showMoreSheet = false },
+            onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
+            onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
             onNavigateToExpenses = { currentScreen = AppScreen.EXPENSES },
-            onNavigateToMaintenance = { currentScreen = AppScreen.MAINTENANCE },
             onNavigateToSettings = { currentScreen = AppScreen.SETTINGS }
         )
     }
 
-    // Dialogs
-    if (showAddTripDialog) {
-        AddTripDialog(
-            onDismiss = { showAddTripDialog = false },
-            onConfirm = { platform, amt, dist, dur, time, date ->
-                viewModel.addTrip(platform, amt, dist, dur, time, date)
+    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados)
+    if (showRecordDailyWorkDialog) {
+        RecordDailyWorkDialog(
+            onDismiss = { showRecordDailyWorkDialog = false },
+            onConfirm = { date, amount, trips, km, notes ->
+                viewModel.recordDailyWork(date, amount, trips, km, notes)
             }
         )
     }
 
+    // Dialog: Registrar Despesa
     if (showAddExpenseDialog) {
         AddExpenseDialog(
             onDismiss = { showAddExpenseDialog = false },
             onConfirm = { category, amount, desc, date ->
                 viewModel.addExpense(category, amount, desc, date)
-            }
-        )
-    }
-
-    if (showAddFuelDialog) {
-        AddFuelDialog(
-            onDismiss = { showAddFuelDialog = false },
-            onConfirm = { date, liters, total, type, odo, station ->
-                viewModel.addFuelLog(date, liters, total, type, odo, station)
-            }
-        )
-    }
-
-    if (showAddMaintenanceDialog) {
-        AddExpenseDialog(
-            onDismiss = { showAddMaintenanceDialog = false },
-            onConfirm = { category, amount, desc, date ->
-                viewModel.addMaintenance(
-                    title = desc,
-                    cost = amount,
-                    date = date,
-                    alertKm = 5000,
-                    alertDays = 30,
-                    isCompleted = true,
-                    notes = category
-                )
             }
         )
     }
