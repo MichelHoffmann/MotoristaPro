@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,8 +22,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.VehicleCatalog
 import com.example.model.VehiclePowertrain
 import com.example.model.VehicleProfile
+import com.example.ui.components.VehicleBrandModelSelector
 import com.example.ui.theme.*
 
 @Composable
@@ -51,8 +52,15 @@ fun NewUserScreen(
     var fuelType by remember { mutableStateOf(if (currentProfile.fuelType.isNotBlank()) currentProfile.fuelType else "Flex") }
     var isElectric by remember { mutableStateOf(currentProfile.isElectric) }
 
+    val initialBrand = remember(currentProfile.modelName) {
+        val parts = currentProfile.modelName.trim().split(" ")
+        val matched = VehicleCatalog.brands.find { it.brandName.equals(parts.firstOrNull(), ignoreCase = true) }
+        matched?.brandName ?: "Fiat"
+    }
+    var selectedBrandName by remember { mutableStateOf(initialBrand) }
+
     var consumptionText by remember {
-        mutableStateOf(if (currentProfile.averageConsumption > 0) currentProfile.averageConsumption.toString() else "11.5")
+        mutableStateOf(if (currentProfile.averageConsumption > 0) currentProfile.averageConsumption.toString() else "")
     }
     var priceText by remember {
         mutableStateOf(if (currentProfile.fuelOrEnergyPrice > 0) currentProfile.fuelOrEnergyPrice.toString() else "5.89")
@@ -61,7 +69,7 @@ fun NewUserScreen(
         mutableStateOf(if (currentProfile.currentMileage > 0) currentProfile.currentMileage.toInt().toString() else "0")
     }
     var monthlyGoalText by remember {
-        mutableStateOf(if (currentProfile.monthlyGoal > 0) currentProfile.monthlyGoal.toInt().toString() else "6000")
+        mutableStateOf(if (currentProfile.monthlyGoal > 0) currentProfile.monthlyGoal.toInt().toString() else "5000")
     }
 
     val powertrainOptions = listOf(
@@ -106,13 +114,13 @@ fun NewUserScreen(
 
                 Column {
                     Text(
-                        text = if (currentProfile.isProfileConfigured) "Editar Perfil & Veículo" else "Novo Usuário",
+                        text = if (currentProfile.isProfileConfigured) "Editar Perfil & Veículo" else "Cadastro do Motorista",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
                     )
                     Text(
-                        text = "Configuração do motorista e veículo",
+                        text = "Configuração do perfil e veículo",
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
@@ -130,7 +138,7 @@ fun NewUserScreen(
             }
         }
 
-        // Section 1: Dados do Motorista
+        // Section 1: Dados do Motorista (Nome completo permitido)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -140,7 +148,7 @@ fun NewUserScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
                     text = "1. Identificação do Motorista",
@@ -152,8 +160,15 @@ fun NewUserScreen(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Seu Nome") },
-                    placeholder = { Text("Ex: Carlos Silva") },
+                    label = { Text("Nome Completo") },
+                    placeholder = { Text("Ex: Carlos Eduardo da Silva") },
+                    supportingText = {
+                        Text(
+                            text = "Digite seu nome completo. Na tela inicial exibiremos apenas o primeiro nome.",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    },
                     leadingIcon = {
                         Icon(Icons.Outlined.Person, contentDescription = null, tint = TextSecondary)
                     },
@@ -170,7 +185,7 @@ fun NewUserScreen(
             }
         }
 
-        // Section 2: Dados do Veículo
+        // Section 2: Dados do Veículo com Escolha da Marca e Modelo
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -183,29 +198,44 @@ fun NewUserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "2. Dados do Veículo",
+                    text = "2. Dados do Veículo (Marca e Modelo)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = EmeraldGreen
                 )
 
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text("Marca e Modelo") },
-                    placeholder = { Text("Ex: Fiat Argo, BYD Dolphin, Corolla") },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.DirectionsCar, contentDescription = null, tint = TextSecondary)
+                Text(
+                    text = "Selecione a marca e escolha o modelo para carregar as configurações do carro:",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+
+                // Brand and Model dropdown selector
+                VehicleBrandModelSelector(
+                    selectedBrandName = selectedBrandName,
+                    onBrandSelected = { brand ->
+                        selectedBrandName = brand
+                        val bInfo = VehicleCatalog.brands.find { it.brandName == brand }
+                        if (bInfo != null && bInfo.models.isNotEmpty()) {
+                            val first = bInfo.models.first()
+                            model = "${bInfo.brandName} ${first.name}"
+                            selectedPowertrain = first.suggestedPowertrain
+                            isElectric = (first.suggestedPowertrain == VehiclePowertrain.ELETRICO)
+                            fuelType = first.suggestedPowertrain.displayName
+                            consumptionText = first.averageConsumption.toString()
+                            priceText = if (isElectric) "0.85" else "5.89"
+                        }
                     },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_vehicle_model"),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderDark
-                    )
+                    selectedModelName = model,
+                    onModelSelected = { brandInfo, modelInfo ->
+                        model = "${brandInfo.brandName} ${modelInfo.name}"
+                        selectedPowertrain = modelInfo.suggestedPowertrain
+                        isElectric = (modelInfo.suggestedPowertrain == VehiclePowertrain.ELETRICO)
+                        fuelType = modelInfo.suggestedPowertrain.displayName
+                        consumptionText = modelInfo.averageConsumption.toString()
+                        priceText = if (isElectric) "0.85" else "5.89"
+                    },
+                    onCustomModelChange = { model = it }
                 )
 
                 Row(
@@ -260,7 +290,7 @@ fun NewUserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "3. Tipo de Propulsão do Veículo",
+                    text = "3. Propulsão & Consumo (Opcional)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = EmeraldGreen
@@ -284,14 +314,12 @@ fun NewUserScreen(
                                             selectedPowertrain = pt
                                             isElectric = (pt == VehiclePowertrain.ELETRICO)
                                             fuelType = pt.displayName
+                                            if (consumptionText.isBlank() || consumptionText == "11.5" || consumptionText == "6.5" || consumptionText == "16.0") {
+                                                consumptionText = VehicleCatalog.getDefaultConsumption(pt).toString()
+                                            }
                                             if (pt == VehiclePowertrain.ELETRICO) {
-                                                consumptionText = "6.5"
                                                 priceText = "0.85"
-                                            } else if (pt == VehiclePowertrain.HIBRIDO_PLUGIN) {
-                                                consumptionText = "16.0"
-                                                priceText = "5.89"
                                             } else {
-                                                consumptionText = "11.5"
                                                 priceText = "5.89"
                                             }
                                         }
@@ -311,47 +339,49 @@ fun NewUserScreen(
                     }
                 }
 
-                // Consumption and Price fields
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = consumptionText,
-                        onValueChange = { consumptionText = it },
-                        label = { Text(if (isElectric) "Consumo (km/kWh)" else "Consumo (km/L)") },
-                        placeholder = { Text(if (isElectric) "Ex: 6.5" else "Ex: 11.5") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("input_fuel_consumption"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderDark
+                // Consumption and Price fields (Consumo NÃO é obrigatório!)
+                OutlinedTextField(
+                    value = consumptionText,
+                    onValueChange = { consumptionText = it },
+                    label = { Text(if (isElectric) "Consumo (km/kWh) • Opcional" else "Consumo (km/L) • Opcional") },
+                    placeholder = { Text("Padrão médio: ${VehicleCatalog.getDefaultConsumption(selectedPowertrain)}") },
+                    supportingText = {
+                        Text(
+                            text = "Não é obrigatório. Se deixar em branco, adotaremos a média de ${VehicleCatalog.getDefaultConsumption(selectedPowertrain)} ${if (isElectric) "km/kWh" else "km/L"} para este tipo de veículo.",
+                            fontSize = 11.sp,
+                            color = TextSecondary
                         )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_fuel_consumption"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
                     )
+                )
 
-                    OutlinedTextField(
-                        value = priceText,
-                        onValueChange = { priceText = it },
-                        label = { Text(if (isElectric) "Energia (R$/kWh)" else "Preço Médio (R$/L)") },
-                        placeholder = { Text(if (isElectric) "Ex: 0.85" else "Ex: 5.89") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("input_fuel_price"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderDark
-                        )
+                OutlinedTextField(
+                    value = priceText,
+                    onValueChange = { priceText = it },
+                    label = { Text(if (isElectric) "Preço Energia (R$/kWh)" else "Preço Combustível (R$/L)") },
+                    placeholder = { Text(if (isElectric) "Ex: 0.85" else "Ex: 5.89") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_fuel_price"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
                     )
-                }
+                )
             }
         }
 
-        // Section 4: Meta Financeira Mensal
+        // Section 4: Meta Financeira Mensal (Meta deve ser de LUCRO LÍQUIDO)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -364,7 +394,7 @@ fun NewUserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "4. Meta Financeira Mensal",
+                    text = "4. Meta Financeira Mensal (Lucro Líquido)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = EmeraldGreen
@@ -373,8 +403,8 @@ fun NewUserScreen(
                 OutlinedTextField(
                     value = monthlyGoalText,
                     onValueChange = { monthlyGoalText = it },
-                    label = { Text("Meta de Faturamento Mensal (R$)") },
-                    placeholder = { Text("Ex: 6000.00") },
+                    label = { Text("Meta de Lucro Líquido Mensal (R$)") },
+                    placeholder = { Text("Ex: 5000.00") },
                     leadingIcon = {
                         Icon(Icons.Outlined.TrackChanges, contentDescription = null, tint = EmeraldGreen)
                     },
@@ -390,7 +420,7 @@ fun NewUserScreen(
                 )
 
                 Text(
-                    text = "A sua meta diária e tarifação mínima por km serão calculadas automaticamente no aplicativo com base no valor restante do mês e nos dias marcados no calendário.",
+                    text = "A sua meta é de LUCRO LÍQUIDO (o dinheiro que sobra livre no seu bolso após pagar o combustível e os custos do carro). As metas diárias e de tarifação mínima por km serão calculadas automaticamente para você alcançar esse lucro.",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -400,10 +430,16 @@ fun NewUserScreen(
         // Save Button
         Button(
             onClick = {
-                val consumption = consumptionText.replace(",", ".").toDoubleOrNull() ?: 11.5
-                val price = priceText.replace(",", ".").toDoubleOrNull() ?: 5.89
+                val defaultConsumption = VehicleCatalog.getDefaultConsumption(selectedPowertrain)
+                val parsedCons = consumptionText.replace(",", ".").toDoubleOrNull()
+                val consumption = if (parsedCons != null && parsedCons > 0.0) parsedCons else defaultConsumption
+
+                val defaultPrice = VehicleCatalog.getDefaultFuelPrice(selectedPowertrain)
+                val parsedPrice = priceText.replace(",", ".").toDoubleOrNull()
+                val price = if (parsedPrice != null && parsedPrice > 0.0) parsedPrice else defaultPrice
+
                 val mileage = mileageText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                val goal = monthlyGoalText.replace(",", ".").toDoubleOrNull() ?: 6000.0
+                val goal = monthlyGoalText.replace(",", ".").toDoubleOrNull() ?: 5000.0
 
                 onSaveProfile(
                     name.ifBlank { "Motorista" },

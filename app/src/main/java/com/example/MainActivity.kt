@@ -203,35 +203,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     modifier = Modifier.testTag("nav_reports")
                 )
 
-                // 4. Despesas
-                NavigationBarItem(
-                    selected = currentScreen == AppScreen.EXPENSES,
-                    onClick = { currentScreen = AppScreen.EXPENSES },
-                    icon = {
-                        Icon(
-                            imageVector = if (currentScreen == AppScreen.EXPENSES) Icons.Filled.ReceiptLong else Icons.Outlined.ReceiptLong,
-                            contentDescription = "Despesas",
-                            modifier = Modifier.size(22.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = "Despesas",
-                            fontSize = 11.sp,
-                            fontWeight = if (currentScreen == AppScreen.EXPENSES) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = EmeraldGreen,
-                        selectedTextColor = EmeraldGreen,
-                        indicatorColor = EmeraldGreen.copy(alpha = 0.15f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    ),
-                    modifier = Modifier.testTag("nav_expenses")
-                )
-
-                // 5. Mais / Meu Veículo / Configurações
+                // 4. Mais / Meu Veículo / Configurações
                 val isMoreScreen = currentScreen == AppScreen.SETTINGS || currentScreen == AppScreen.VEHICLE
                 NavigationBarItem(
                     selected = isMoreScreen,
@@ -271,11 +243,11 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                 AppScreen.HOME -> HomeScreen(
                     dailyEarnings = dailyEarnings,
                     expenses = expenses,
+                    fuelChargeRecords = fuelChargeRecords,
                     workDays = workDays,
                     vehicleProfile = vehicleProfile,
                     viabilityResult = viabilityResult,
                     onAddDailyWorkClick = { showRecordDailyWorkDialog = true },
-                    onAddExpenseClick = { showAddExpenseDialog = true },
                     onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER }
@@ -284,6 +256,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     currentYearMonth = currentYearMonth,
                     workDays = workDays,
                     dailyEarnings = dailyEarnings,
+                    expenses = expenses,
                     vehicleProfile = vehicleProfile,
                     onNextMonth = { viewModel.nextMonth() },
                     onPreviousMonth = { viewModel.previousMonth() },

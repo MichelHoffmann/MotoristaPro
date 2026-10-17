@@ -84,19 +84,6 @@ fun MoreSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MoreSheetCard(
-                    title = "Despesas",
-                    subtitle = "Gastos e categorias",
-                    icon = Icons.Outlined.ReceiptLong,
-                    iconBg = ExpenseRed.copy(alpha = 0.2f),
-                    iconTint = ExpenseRedSoft,
-                    onClick = {
-                        onDismiss()
-                        onNavigateToExpenses()
-                    },
-                    modifier = Modifier.weight(1f).testTag("more_expenses_card")
-                )
-
-                MoreSheetCard(
                     title = "Configurações",
                     subtitle = "Perfil, dados e reset",
                     icon = Icons.Outlined.Settings,
@@ -106,7 +93,7 @@ fun MoreSheet(
                         onDismiss()
                         onNavigateToSettings()
                     },
-                    modifier = Modifier.weight(1f).testTag("more_settings_card")
+                    modifier = Modifier.fillMaxWidth().testTag("more_settings_card")
                 )
             }
 

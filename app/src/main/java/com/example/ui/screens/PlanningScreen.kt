@@ -39,6 +39,7 @@ fun PlanningScreen(
     currentYearMonth: Pair<Int, Int>,
     workDays: List<WorkDay>,
     dailyEarnings: List<DailyEarning>,
+    expenses: List<Expense> = emptyList(),
     vehicleProfile: VehicleProfile,
     onNextMonth: () -> Unit,
     onPreviousMonth: () -> Unit,
@@ -75,6 +76,17 @@ fun PlanningScreen(
     }
     val totalEarnedThisMonth = monthEarnings.sumOf { it.totalAmount }
 
+    val monthExpenses = expenses.filter {
+        val parts = it.dateStr.split("/")
+        if (parts.size == 3) {
+            val dMonth = parts[1].toIntOrNull()?.minus(1)
+            val dYear = parts[2].toIntOrNull()
+            dMonth == month && dYear == year
+        } else false
+    }
+    val totalExpensesThisMonth = monthExpenses.sumOf { it.amount }
+    val totalProfitThisMonth = totalEarnedThisMonth - totalExpensesThisMonth
+
     // Work days for this month
     val monthWorkDays = workDays.filter {
         val parts = it.dateStr.split("/")
@@ -96,17 +108,20 @@ fun PlanningScreen(
         else false
     }
 
-    // Monthly Goal Calculations
+    // Monthly Goal Calculations (Baseada em Lucro Líquido)
     val monthlyGoal = vehicleProfile.monthlyGoal
-    val remainingAmount = (monthlyGoal - totalEarnedThisMonth).coerceAtLeast(0.0)
+    val remainingAmount = (monthlyGoal - totalProfitThisMonth).coerceAtLeast(0.0)
     val requiredDailyGoal = if (remainingWorkDays > 0) {
         remainingAmount / remainingWorkDays
     } else {
         if (remainingAmount > 0) remainingAmount else 0.0
     }
     val progressPercent = if (monthlyGoal > 0) {
-        ((totalEarnedThisMonth / monthlyGoal) * 100).toInt().coerceIn(0, 100)
+        (((totalProfitThisMonth.coerceAtLeast(0.0)) / monthlyGoal) * 100).toInt().coerceIn(0, 100)
     } else 0
+
+    val minRatePerKm = 2.10
+    val estimatedDailyKm = if (requiredDailyGoal > 0) kotlin.math.ceil(requiredDailyGoal / minRatePerKm) else 0.0
 
     Column(
         modifier = modifier
@@ -171,7 +186,7 @@ fun PlanningScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Meta Mensal de Faturamento",
+                            text = "Meta Mensal de Lucro Líquido",
                             fontSize = 13.sp,
                             color = TextSecondary,
                             fontWeight = FontWeight.Medium
@@ -210,12 +225,12 @@ fun PlanningScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("Realizado", fontSize = 11.sp, color = TextSecondary)
+                        Text("Lucro Realizado", fontSize = 11.sp, color = TextSecondary)
                         Text(
-                            text = MainViewModel.formatCurrency(totalEarnedThisMonth),
+                            text = MainViewModel.formatCurrency(totalProfitThisMonth),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextWhite
+                            color = if (totalProfitThisMonth >= 0) TextWhite else ExpenseRedSoft
                         )
                     }
 
@@ -238,6 +253,26 @@ fun PlanningScreen(
                             color = EmeraldGreen
                         )
                     }
+                }
+
+                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Route,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Quilometragem provável: ~${estimatedDailyKm.toInt()} km/dia para atingir a meta diária (considerando piso de R$ 2,10/km).",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
                 }
             }
         }
@@ -726,7 +761,7 @@ fun PlanningScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "Definir Meta Mensal",
+                        text = "Definir Meta de Lucro Líquido",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
@@ -735,7 +770,8 @@ fun PlanningScreen(
                     OutlinedTextField(
                         value = goalInput,
                         onValueChange = { goalInput = it },
-                        label = { Text("Valor da Meta Mensal (R$)") },
+                        label = { Text("Meta de Lucro Líquido Mensal (R$)") },
+                        placeholder = { Text("Ex: 5000.00") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),

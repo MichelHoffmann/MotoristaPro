@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.model.*
+import com.example.ui.components.VehicleBrandModelSelector
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
 
@@ -830,6 +831,7 @@ fun ViabilityTab(
                     CalculationLine("Faturamento mensal necessário:", MainViewModel.formatCurrency(viabilityResult.monthlyNecessaryRevenue), TextWhite)
                     CalculationLine("Lucro líquido mensal estimado:", MainViewModel.formatCurrency(viabilityResult.estimatedNetProfit), ProfitGreen)
                     CalculationLine("Dias de trabalho planejados:", "${viabilityResult.plannedWorkDaysCount} dias", MetricBlue)
+                    CalculationLine("Km prováveis no dia para a meta:", "~${viabilityResult.estimatedDailyKmToGoal.toInt()} km/dia", EmeraldGreen)
                 }
             }
         }
@@ -1372,9 +1374,23 @@ fun EditVehiclePowertrainDialog(
     var powertrain by remember { mutableStateOf(currentProfile.vehiclePowertrain) }
     var modelName by remember { mutableStateOf(currentProfile.modelName) }
     var year by remember { mutableStateOf(currentProfile.manufacturingYear) }
-    var consumptionText by remember { mutableStateOf(currentProfile.averageConsumption.toString()) }
-    var electricConsumptionText by remember { mutableStateOf(currentProfile.electricConsumption.toString()) }
-    var fuelPriceText by remember { mutableStateOf(currentProfile.fuelOrEnergyPrice.toString()) }
+
+    val initialBrand = remember(currentProfile.modelName) {
+        val parts = currentProfile.modelName.trim().split(" ")
+        val matched = VehicleCatalog.brands.find { it.brandName.equals(parts.firstOrNull(), ignoreCase = true) }
+        matched?.brandName ?: "Fiat"
+    }
+    var selectedBrandName by remember { mutableStateOf(initialBrand) }
+
+    var consumptionText by remember {
+        mutableStateOf(if (currentProfile.averageConsumption > 0) currentProfile.averageConsumption.toString() else "")
+    }
+    var electricConsumptionText by remember {
+        mutableStateOf(if (currentProfile.electricConsumption > 0) currentProfile.electricConsumption.toString() else "")
+    }
+    var fuelPriceText by remember {
+        mutableStateOf(if (currentProfile.fuelOrEnergyPrice > 0) currentProfile.fuelOrEnergyPrice.toString() else "5.89")
+    }
     var homeKwhText by remember { mutableStateOf(currentProfile.homeKwhPrice.toString()) }
     var publicKwhText by remember { mutableStateOf(currentProfile.publicKwhPrice.toString()) }
 
@@ -1395,13 +1411,46 @@ fun EditVehiclePowertrainDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Configurar Tipo de Veículo", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextWhite)
+                    Text("Configurar Veículo & Propulsão", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextWhite)
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
                     }
                 }
 
-                Text("Selecione a Propulsão", fontSize = 12.sp, color = TextSecondary)
+                Text("1. Marca e Modelo", fontSize = 12.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
+
+                VehicleBrandModelSelector(
+                    selectedBrandName = selectedBrandName,
+                    onBrandSelected = { brand ->
+                        selectedBrandName = brand
+                        val bInfo = VehicleCatalog.brands.find { it.brandName == brand }
+                        if (bInfo != null && bInfo.models.isNotEmpty()) {
+                            val first = bInfo.models.first()
+                            modelName = "${bInfo.brandName} ${first.name}"
+                            powertrain = first.suggestedPowertrain
+                            consumptionText = first.averageConsumption.toString()
+                            if (powertrain == VehiclePowertrain.ELETRICO) {
+                                fuelPriceText = "0.85"
+                            } else {
+                                fuelPriceText = "5.89"
+                            }
+                        }
+                    },
+                    selectedModelName = modelName,
+                    onModelSelected = { brandInfo, modelInfo ->
+                        modelName = "${brandInfo.brandName} ${modelInfo.name}"
+                        powertrain = modelInfo.suggestedPowertrain
+                        consumptionText = modelInfo.averageConsumption.toString()
+                        if (powertrain == VehiclePowertrain.ELETRICO) {
+                            fuelPriceText = "0.85"
+                        } else {
+                            fuelPriceText = "5.89"
+                        }
+                    },
+                    onCustomModelChange = { modelName = it }
+                )
+
+                Text("2. Tipo de Propulsão", fontSize = 12.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     VehiclePowertrain.entries.chunked(2).forEach { row ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1414,8 +1463,13 @@ fun EditVehiclePowertrainDialog(
                                         .background(if (isSelected) EmeraldGreen else SurfaceDark)
                                         .clickable {
                                             powertrain = pt
-                                            if (pt == VehiclePowertrain.ELETRICO && consumptionText == "0.0") {
-                                                consumptionText = "6.5"
+                                            if (consumptionText.isBlank() || consumptionText == "11.5" || consumptionText == "6.5" || consumptionText == "16.0") {
+                                                consumptionText = VehicleCatalog.getDefaultConsumption(pt).toString()
+                                            }
+                                            if (pt == VehiclePowertrain.ELETRICO) {
+                                                fuelPriceText = "0.85"
+                                            } else {
+                                                fuelPriceText = "5.89"
                                             }
                                         }
                                         .padding(vertical = 10.dp),
@@ -1433,45 +1487,42 @@ fun EditVehiclePowertrainDialog(
                     }
                 }
 
-                OutlinedTextField(
-                    value = modelName,
-                    onValueChange = { modelName = it },
-                    label = { Text("Modelo do Carro") },
-                    placeholder = { Text("Ex: BYD Dolphin, Onix Plus, Corolla Hybrid") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Text("3. Consumo (Opcional)", fontSize = 12.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
 
                 // Adapt fields according to powertrain
                 when (powertrain) {
                     VehiclePowertrain.COMBUSTAO, VehiclePowertrain.HIBRIDO -> {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
-                                value = consumptionText,
-                                onValueChange = { consumptionText = it },
-                                label = { Text("Consumo (km/L)") },
-                                placeholder = { Text("12.5") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = fuelPriceText,
-                                onValueChange = { fuelPriceText = it },
-                                label = { Text("Preço Gasolina/Etanol (R$/L)") },
-                                placeholder = { Text("5.89") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        OutlinedTextField(
+                            value = consumptionText,
+                            onValueChange = { consumptionText = it },
+                            label = { Text("Consumo (km/L) • Opcional") },
+                            placeholder = { Text("Média: ${VehicleCatalog.getDefaultConsumption(powertrain)}") },
+                            supportingText = {
+                                Text("Opcional: se não informar, o app adotará ${VehicleCatalog.getDefaultConsumption(powertrain)} km/L.", fontSize = 11.sp, color = TextSecondary)
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = fuelPriceText,
+                            onValueChange = { fuelPriceText = it },
+                            label = { Text("Preço Combustível (R$/L)") },
+                            placeholder = { Text("5.89") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                     VehiclePowertrain.ELETRICO -> {
                         OutlinedTextField(
                             value = consumptionText,
                             onValueChange = { consumptionText = it },
-                            label = { Text("Consumo Elétrico (km/kWh)") },
-                            placeholder = { Text("6.5") },
+                            label = { Text("Consumo Elétrico (km/kWh) • Opcional") },
+                            placeholder = { Text("Média: ${VehicleCatalog.getDefaultConsumption(powertrain)}") },
+                            supportingText = {
+                                Text("Opcional: se não informar, o app adotará ${VehicleCatalog.getDefaultConsumption(powertrain)} km/kWh.", fontSize = 11.sp, color = TextSecondary)
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
@@ -1490,7 +1541,7 @@ fun EditVehiclePowertrainDialog(
                             OutlinedTextField(
                                 value = publicKwhText,
                                 onValueChange = { publicKwhText = it },
-                                label = { Text("Recarga Pública (R$/kWh)") },
+                                label = { Text("Pública (R$/kWh)") },
                                 placeholder = { Text("2.10") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -1499,32 +1550,30 @@ fun EditVehiclePowertrainDialog(
                         }
                     }
                     VehiclePowertrain.HIBRIDO_PLUGIN -> {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
-                                value = consumptionText,
-                                onValueChange = { consumptionText = it },
-                                label = { Text("Consumo Gasolina (km/L)") },
-                                placeholder = { Text("18.0") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = electricConsumptionText,
-                                onValueChange = { electricConsumptionText = it },
-                                label = { Text("Consumo Elétrico (km/kWh)") },
-                                placeholder = { Text("5.8") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        OutlinedTextField(
+                            value = consumptionText,
+                            onValueChange = { consumptionText = it },
+                            label = { Text("Consumo Gasolina (km/L) • Opcional") },
+                            placeholder = { Text("Média: ${VehicleCatalog.getDefaultConsumption(powertrain)}") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = electricConsumptionText,
+                            onValueChange = { electricConsumptionText = it },
+                            label = { Text("Consumo Elétrico (km/kWh) • Opcional") },
+                            placeholder = { Text("Média: ${VehicleCatalog.getDefaultElectricConsumption(powertrain)}") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
                                 value = fuelPriceText,
                                 onValueChange = { fuelPriceText = it },
-                                label = { Text("Preço Combustível (R$/L)") },
+                                label = { Text("Combustível (R$/L)") },
                                 placeholder = { Text("5.89") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -1533,7 +1582,7 @@ fun EditVehiclePowertrainDialog(
                             OutlinedTextField(
                                 value = homeKwhText,
                                 onValueChange = { homeKwhText = it },
-                                label = { Text("Tarifa Casa (R$/kWh)") },
+                                label = { Text("Casa (R$/kWh)") },
                                 placeholder = { Text("0.85") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -1545,9 +1594,18 @@ fun EditVehiclePowertrainDialog(
 
                 Button(
                     onClick = {
-                        val consumption = consumptionText.replace(",", ".").toDoubleOrNull() ?: 10.0
-                        val elecConsumption = electricConsumptionText.replace(",", ".").toDoubleOrNull() ?: 6.0
-                        val fuelPrice = fuelPriceText.replace(",", ".").toDoubleOrNull() ?: 5.89
+                        val defaultCons = VehicleCatalog.getDefaultConsumption(powertrain)
+                        val parsedCons = consumptionText.replace(",", ".").toDoubleOrNull()
+                        val consumption = if (parsedCons != null && parsedCons > 0.0) parsedCons else defaultCons
+
+                        val defaultElecCons = VehicleCatalog.getDefaultElectricConsumption(powertrain)
+                        val parsedElecCons = electricConsumptionText.replace(",", ".").toDoubleOrNull()
+                        val elecConsumption = if (parsedElecCons != null && parsedElecCons > 0.0) parsedElecCons else defaultElecCons
+
+                        val defaultFuel = VehicleCatalog.getDefaultFuelPrice(powertrain)
+                        val parsedFuel = fuelPriceText.replace(",", ".").toDoubleOrNull()
+                        val fuelPrice = if (parsedFuel != null && parsedFuel > 0.0) parsedFuel else defaultFuel
+
                         val homeKwh = homeKwhText.replace(",", ".").toDoubleOrNull() ?: 0.85
                         val publicKwh = publicKwhText.replace(",", ".").toDoubleOrNull() ?: 2.10
 

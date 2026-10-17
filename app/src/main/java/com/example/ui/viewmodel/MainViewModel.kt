@@ -317,7 +317,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     averageConsumption = avgConsumption,
                     fuelOrEnergyPrice = fuelOrEnergyPrice,
                     currentMileage = currentMileage,
-                    monthlyGoal = if (monthlyGoal > 0) monthlyGoal else 6000.0,
+                    monthlyGoal = if (monthlyGoal > 0) monthlyGoal else 5000.0,
+                    isGoalNetProfit = true,
                     isProfileConfigured = true
                 )
             )

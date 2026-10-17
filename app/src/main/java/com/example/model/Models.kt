@@ -116,8 +116,8 @@ data class VehicleProfile(
     val homeKwhPrice: Double = 0.85, // Preço por kWh em casa
     val publicKwhPrice: Double = 2.10, // Preço por kWh em eletroposto público
     val currentMileage: Double = 0.0,
-    val monthlyGoal: Double = 6000.0, // Meta mensal
-    val isGoalNetProfit: Boolean = false, // false = Faturamento bruto desejado, true = Lucro líquido desejado
+    val monthlyGoal: Double = 6000.0, // Meta mensal de Lucro Líquido
+    val isGoalNetProfit: Boolean = true, // true = Lucro líquido desejado (regra do app)
     val isProfileConfigured: Boolean = false,
     // Parâmetros para cálculo de viabilidade (R$/km e R$/hora mínimo)
     val avgDailyKm: Double = 150.0, // Quilometragem média diária estimada

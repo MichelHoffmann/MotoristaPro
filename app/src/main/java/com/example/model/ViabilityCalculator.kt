@@ -51,6 +51,7 @@ data class ViabilityCalculationResult(
     val safetyMarginPercentage: Double = 10.0,
     val avgDailyKm: Double = 150.0,
     val avgDailyHours: Double = 8.0,
+    val estimatedDailyKmToGoal: Double = 0.0, // Estimativa de km que o motorista provavelmente rodará para bater a meta
 
     // Explicação didática simples e transparente
     val explanationText: String = ""
@@ -63,20 +64,19 @@ object ViabilityCalculator {
         costItems: List<VehicleCostItem>,
         plannedDaysCount: Int
     ): ViabilityCalculationResult {
-        // Validação de dados suficientes
+        // Validação e adoção de valores médios quando não informados
         val days = if (plannedDaysCount > 0) plannedDaysCount else 22 // padrão 22 dias se ainda não marcou
         val avgKm = if (profile.avgDailyKm > 0) profile.avgDailyKm else 150.0
         val avgHours = if (profile.avgDailyHours > 0) profile.avgDailyHours else 8.0
-        val consumption = profile.averageConsumption
-        val fuelPrice = profile.fuelOrEnergyPrice
 
-        val hasEnoughConsumptionData = consumption > 0 && fuelPrice > 0
-        if (!hasEnoughConsumptionData && !profile.isProfileConfigured) {
-            return ViabilityCalculationResult(
-                hasSufficientData = false,
-                missingDataMessage = "Para calcular os valores mínimos com precisão, informe o consumo do veículo e o preço do combustível ou da energia na seção 'Meu Veículo' ou 'Configurações'."
-            )
-        }
+        // Valores médios automáticos para cada tipo de propulsão
+        val defaultConsumption = VehicleCatalog.getDefaultConsumption(profile.vehiclePowertrain)
+        val defaultElectricConsumption = VehicleCatalog.getDefaultElectricConsumption(profile.vehiclePowertrain)
+        val defaultFuelPrice = VehicleCatalog.getDefaultFuelPrice(profile.vehiclePowertrain)
+
+        val consumption = if (profile.averageConsumption > 0.0) profile.averageConsumption else defaultConsumption
+        val electricConsumption = if (profile.electricConsumption > 0.0) profile.electricConsumption else defaultElectricConsumption
+        val fuelPrice = if (profile.fuelOrEnergyPrice > 0.0) profile.fuelOrEnergyPrice else defaultFuelPrice
 
         // 1. Custos Fixos Mensais do Veículo (financiamento/aluguel, seguro, IPVA, etc.)
         val monthlyFixed = costItems.filter { it.category.isFixedCost }.sumOf { it.monthlyEquivalentCost }
@@ -85,31 +85,27 @@ object ViabilityCalculator {
         // 2. Custo de Combustível / Energia por km
         val energyPerKm = when (profile.vehiclePowertrain) {
             VehiclePowertrain.ELETRICO -> {
-                // Preço ponderado de recarga (70% casa, 30% pública se configurado)
                 val effectiveKwhPrice = if (profile.homeKwhPrice > 0) {
                     profile.homeKwhPrice * 0.7 + profile.publicKwhPrice * 0.3
                 } else fuelPrice
-                if (consumption > 0) effectiveKwhPrice / consumption else 0.15
+                effectiveKwhPrice / consumption
             }
             VehiclePowertrain.HIBRIDO_PLUGIN -> {
-                // Parte energia + parte combustível
-                val gasPart = if (consumption > 0) fuelPrice / consumption else 0.45
-                val elecPart = if (profile.electricConsumption > 0) profile.homeKwhPrice / profile.electricConsumption else 0.18
+                val gasPart = fuelPrice / consumption
+                val elecPart = if (electricConsumption > 0) profile.homeKwhPrice / electricConsumption else 0.18
                 (gasPart * 0.5) + (elecPart * 0.5)
             }
             VehiclePowertrain.COMBUSTAO, VehiclePowertrain.HIBRIDO -> {
-                if (consumption > 0) fuelPrice / consumption else 0.50
+                fuelPrice / consumption
             }
         }
 
         // 3. Custos Variáveis de Manutenção (pneus, óleo, revisões periódicas)
-        // Somar custos de manutenção cadastrados diluídos por km ou estimativa técnica padrão
         val recordedMaintenanceMonthly = costItems.filter { !it.category.isFixedCost }.sumOf { it.monthlyEquivalentCost }
         val totalMonthlyEstimatedKm = days * avgKm
         val maintenancePerKm = if (totalMonthlyEstimatedKm > 0 && recordedMaintenanceMonthly > 0) {
             recordedMaintenanceMonthly / totalMonthlyEstimatedKm
         } else {
-            // Estimativa preventiva padrão no Brasil para motoristas de app: ~R$ 0,16/km
             0.16
         }
 
@@ -122,31 +118,31 @@ object ViabilityCalculator {
         val estimatedDailyVehicleCost = dailyFixed + dailyVariableCost
         val monthlyVehicleCosts = estimatedDailyVehicleCost * days
 
-        // 4. Meta de Faturamento e Lucro
-        // Considera se a meta mensal é faturamento bruto ou lucro líquido
-        val isNetProfit = profile.isGoalNetProfit
+        // 4. Meta de Lucro Líquido (sempre lucro líquido como solicitado)
         val monthlyGoal = if (profile.monthlyGoal > 0) profile.monthlyGoal else 6000.0
+        val isNetProfit = true
 
-        val (dailyTargetRevenue, dailyTargetNetProfit, monthlyNecessaryRevenue) = if (isNetProfit) {
-            // Meta é Lucro Líquido desejado
-            val targetNet = monthlyGoal / days
-            val targetGross = targetNet + estimatedDailyVehicleCost
-            Triple(targetGross, targetNet, monthlyGoal + monthlyVehicleCosts)
-        } else {
-            // Meta é Faturamento Bruto (compatibilidade original)
-            val targetGross = monthlyGoal / days
-            val targetNet = (targetGross - estimatedDailyVehicleCost).coerceAtLeast(0.0)
-            Triple(targetGross, targetNet, monthlyGoal)
-        }
+        val targetNet = monthlyGoal / days
+        val targetGross = targetNet + estimatedDailyVehicleCost
+        val (dailyTargetRevenue, dailyTargetNetProfit, monthlyNecessaryRevenue) = Triple(
+            targetGross,
+            targetNet,
+            monthlyGoal + monthlyVehicleCosts
+        )
 
         // 5. Consideração de Quilometragem sem Passageiros (Deadhead)
         // Se 25% dos km são vazios, apenas 75% dos km são remunerados pela plataforma
         val paidKmRatio = (1.0 - (profile.deadheadPercentage.coerceIn(0.0, 60.0) / 100.0)).coerceAtLeast(0.4)
         val dailyPaidKm = avgKm * paidKmRatio
 
-        // Valor mínimo recomendado por km rodado remunerado:
-        // Necessário faturar dailyTargetRevenue dividindo apenas pelos quilômetros com passageiro
-        val recommendedRatePerKm = if (dailyPaidKm > 0) dailyTargetRevenue / dailyPaidKm else 2.50
+        // Valor mínimo recomendado por km rodado remunerado (piso obrigatório de R$ 2,10/km)
+        val calculatedRatePerKm = if (dailyPaidKm > 0) dailyTargetRevenue / dailyPaidKm else 2.10
+        val recommendedRatePerKm = maxOf(calculatedRatePerKm, 2.10)
+
+        // Quilometragem estimada total que o motorista provavelmente rodará no dia para atingir a meta
+        val estimatedDailyKmToGoal = if (paidKmRatio > 0 && recommendedRatePerKm > 0) {
+            (dailyTargetRevenue / recommendedRatePerKm) / paidKmRatio
+        } else avgKm
 
         // Valor mínimo recomendado por hora trabalhada:
         val recommendedRatePerHour = if (avgHours > 0) dailyTargetRevenue / avgHours else 35.0
@@ -159,12 +155,9 @@ object ViabilityCalculator {
             append("2. Custo diário fixo diluído em $days dias de trabalho: R$ ${String.format("%.2f", dailyFixed).replace(".", ",")}/dia.\n")
             append("3. Quilômetros Não Remunerados: Consideramos que ${profile.deadheadPercentage.toInt()}% dos seus ${avgKm.toInt()} km diários são vazios (deslocamento e retorno), ")
             append("restando ${String.format("%.1f", dailyPaidKm).replace(".", ",")} km remunerados.\n")
-            append("4. Por isso, para atingir sua meta de ")
-            if (isNetProfit) {
-                append("lucro líquido de R$ ${String.format("%.2f", monthlyGoal).replace(".", ",")}, você precisa receber ao menos R$ ${String.format("%.2f", recommendedRatePerKm).replace(".", ",")} por km e R$ ${String.format("%.2f", recommendedRatePerHour).replace(".", ",")} por hora.")
-            } else {
-                append("faturamento bruto de R$ ${String.format("%.2f", monthlyGoal).replace(".", ",")}, sua tarifa mínima viável é de R$ ${String.format("%.2f", recommendedRatePerKm).replace(".", ",")} por km e R$ ${String.format("%.2f", recommendedRatePerHour).replace(".", ",")} por hora.")
-            }
+            append("4. Para atingir sua meta de lucro líquido de R$ ${String.format("%.2f", monthlyGoal).replace(".", ",")}, ")
+            append("você precisará faturar R$ ${String.format("%.2f", dailyTargetRevenue).replace(".", ",")} por dia e provavelmente rodará cerca de ~${estimatedDailyKmToGoal.toInt()} km no dia.\n")
+            append("5. Tarifa mínima obrigatória: R$ ${String.format("%.2f", recommendedRatePerKm).replace(".", ",")} por km rodado (piso de R$ 2,10/km) e R$ ${String.format("%.2f", recommendedRatePerHour).replace(".", ",")} por hora.")
         }
 
         return ViabilityCalculationResult(
@@ -189,6 +182,7 @@ object ViabilityCalculator {
             safetyMarginPercentage = profile.safetyMarginPercentage,
             avgDailyKm = avgKm,
             avgDailyHours = avgHours,
+            estimatedDailyKmToGoal = estimatedDailyKmToGoal,
             explanationText = explanation
         )
     }
