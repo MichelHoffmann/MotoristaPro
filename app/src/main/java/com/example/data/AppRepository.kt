@@ -20,6 +20,7 @@ class AppRepository(private val dao: AppDao) {
 
     suspend fun addDailyEarning(earning: DailyEarning) = dao.insertDailyEarning(earning)
     suspend fun deleteDailyEarning(earning: DailyEarning) = dao.deleteDailyEarning(earning)
+    suspend fun getDailyEarningByDate(dateStr: String): DailyEarning? = dao.getDailyEarningByDate(dateStr)
 
     suspend fun toggleWorkDay(dateStr: String) {
         val currentDays = workDays.firstOrNull() ?: emptyList()

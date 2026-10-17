@@ -150,36 +150,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Register daily earnings & total trip count
+    // Register daily earnings, total trip count, km and work stages
     fun recordDailyWork(
         date: String,
         totalAmount: Double,
         tripsCount: Int,
         kmDriven: Double,
-        notes: String
+        notes: String,
+        startTime: String = "",
+        lunchStartTime: String = "",
+        lunchEndTime: String = "",
+        endTime: String = ""
     ) {
         viewModelScope.launch {
             val effectiveDate = if (date.isBlank()) getTodayDateString() else date
             // Automatically mark this day as a work day
             repository.setWorkDay(effectiveDate, true)
 
-            repository.addDailyEarning(
+            val existing = repository.getDailyEarningByDate(effectiveDate)
+            val updated = if (existing != null) {
+                existing.copy(
+                    totalAmount = totalAmount,
+                    tripsCount = tripsCount,
+                    kmDriven = kmDriven,
+                    notes = notes,
+                    startTime = if (startTime.isNotBlank()) startTime else existing.startTime,
+                    lunchStartTime = if (lunchStartTime.isNotBlank()) lunchStartTime else existing.lunchStartTime,
+                    lunchEndTime = if (lunchEndTime.isNotBlank()) lunchEndTime else existing.lunchEndTime,
+                    endTime = if (endTime.isNotBlank()) endTime else existing.endTime,
+                    timestamp = System.currentTimeMillis()
+                )
+            } else {
                 DailyEarning(
                     dateStr = effectiveDate,
                     totalAmount = totalAmount,
                     tripsCount = tripsCount,
                     kmDriven = kmDriven,
-                    notes = notes
+                    notes = notes,
+                    startTime = startTime,
+                    lunchStartTime = lunchStartTime,
+                    lunchEndTime = lunchEndTime,
+                    endTime = endTime
                 )
-            )
+            }
+
+            repository.addDailyEarning(updated)
 
             // Update odometer if km is greater
             val currentProf = vehicleProfile.value
             if (kmDriven > 0) {
-                repository.updateVehicleProfile(
-                    currentProf.copy(currentMileage = currentProf.currentMileage + kmDriven)
+                val diffKm = if (existing != null) (kmDriven - existing.kmDriven).coerceAtLeast(0.0) else kmDriven
+                if (diffKm > 0) {
+                    repository.updateVehicleProfile(
+                        currentProf.copy(currentMileage = currentProf.currentMileage + diffKm)
+                    )
+                }
+            }
+        }
+    }
+
+    // Set or adjust work stages for a day
+    fun updateWorkStages(
+        date: String,
+        startTime: String,
+        lunchStartTime: String,
+        lunchEndTime: String,
+        endTime: String
+    ) {
+        viewModelScope.launch {
+            val effectiveDate = if (date.isBlank()) getTodayDateString() else date
+            repository.setWorkDay(effectiveDate, true)
+
+            val existing = repository.getDailyEarningByDate(effectiveDate)
+            val updated = if (existing != null) {
+                existing.copy(
+                    startTime = startTime,
+                    lunchStartTime = lunchStartTime,
+                    lunchEndTime = lunchEndTime,
+                    endTime = endTime,
+                    timestamp = System.currentTimeMillis()
+                )
+            } else {
+                DailyEarning(
+                    dateStr = effectiveDate,
+                    totalAmount = 0.0,
+                    tripsCount = 0,
+                    kmDriven = 0.0,
+                    startTime = startTime,
+                    lunchStartTime = lunchStartTime,
+                    lunchEndTime = lunchEndTime,
+                    endTime = endTime
                 )
             }
+            repository.addDailyEarning(updated)
+        }
+    }
+
+    // Quick action: Advance to the next work stage with current time
+    fun recordWorkStageAction(stage: String, date: String = getTodayDateString(), time: String = getCurrentTimeString()) {
+        viewModelScope.launch {
+            val effectiveDate = if (date.isBlank()) getTodayDateString() else date
+            repository.setWorkDay(effectiveDate, true)
+
+            val existing = repository.getDailyEarningByDate(effectiveDate)
+            val updated = if (existing != null) {
+                when (stage) {
+                    "START" -> existing.copy(startTime = time)
+                    "LUNCH_START" -> existing.copy(lunchStartTime = time)
+                    "LUNCH_END" -> existing.copy(lunchEndTime = time)
+                    "END" -> existing.copy(endTime = time)
+                    else -> existing
+                }
+            } else {
+                when (stage) {
+                    "START" -> DailyEarning(dateStr = effectiveDate, totalAmount = 0.0, tripsCount = 0, kmDriven = 0.0, startTime = time)
+                    "LUNCH_START" -> DailyEarning(dateStr = effectiveDate, totalAmount = 0.0, tripsCount = 0, kmDriven = 0.0, lunchStartTime = time)
+                    "LUNCH_END" -> DailyEarning(dateStr = effectiveDate, totalAmount = 0.0, tripsCount = 0, kmDriven = 0.0, lunchEndTime = time)
+                    "END" -> DailyEarning(dateStr = effectiveDate, totalAmount = 0.0, tripsCount = 0, kmDriven = 0.0, endTime = time)
+                    else -> DailyEarning(dateStr = effectiveDate, totalAmount = 0.0, tripsCount = 0, kmDriven = 0.0)
+                }
+            }
+            repository.addDailyEarning(updated)
         }
     }
 
@@ -365,6 +456,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         fun getTodayDateString(): String {
             val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            return sdf.format(Date())
+        }
+
+        fun getCurrentTimeString(): String {
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
             return sdf.format(Date())
         }
 

@@ -11,8 +11,95 @@ data class DailyEarning(
     val tripsCount: Int, // Quantidade total de corridas feitas no dia
     val kmDriven: Double, // Total de km rodados no dia
     val notes: String = "",
-    val timestamp: Long = System.currentTimeMillis()
-)
+    val timestamp: Long = System.currentTimeMillis(),
+    // Etapas da Jornada de Trabalho (Início da jornada, Pausa almoço, Retorno almoço, Fim da jornada)
+    val startTime: String = "", // Etapa 1: Início da jornada (ex: "07:30")
+    val lunchStartTime: String = "", // Etapa 2: Início da pausa/almoço (ex: "12:00")
+    val lunchEndTime: String = "", // Etapa 3: Retorno do almoço (ex: "13:00")
+    val endTime: String = "", // Etapa 4: Fim da jornada (ex: "17:30")
+    val workedMinutes: Int = 0 // Minutos totais trabalhados
+) {
+    val calculatedMinutes: Int
+        get() {
+            if (workedMinutes > 0) return workedMinutes
+            return calculateWorkStageMinutes(startTime, lunchStartTime, lunchEndTime, endTime)
+        }
+
+    val calculatedHours: Double
+        get() = calculatedMinutes / 60.0
+
+    val formattedWorkedTime: String
+        get() {
+            val mins = calculatedMinutes
+            if (mins <= 0) return "0h"
+            val h = mins / 60
+            val m = mins % 60
+            return if (m == 0) "${h}h" else "${h}h ${m}min"
+        }
+
+    val stageCount: Int
+        get() {
+            var count = 0
+            if (startTime.isNotBlank()) count++
+            if (lunchStartTime.isNotBlank()) count++
+            if (lunchEndTime.isNotBlank()) count++
+            if (endTime.isNotBlank()) count++
+            return count
+        }
+}
+
+fun calculateWorkStageMinutes(
+    startTime: String,
+    lunchStartTime: String,
+    lunchEndTime: String,
+    endTime: String
+): Int {
+    fun parseTimeToMinutes(t: String): Int? {
+        val clean = t.trim()
+        if (clean.isBlank()) return null
+        val parts = clean.split(":")
+        if (parts.size >= 2) {
+            val h = parts[0].trim().toIntOrNull() ?: return null
+            val m = parts[1].trim().toIntOrNull() ?: return null
+            return h * 60 + m
+        }
+        return null
+    }
+
+    fun diffMinutes(from: Int, to: Int): Int {
+        return if (to >= from) {
+            to - from
+        } else {
+            (to + 24 * 60) - from
+        }
+    }
+
+    val start = parseTimeToMinutes(startTime)
+    val lunchStart = parseTimeToMinutes(lunchStartTime)
+    val lunchEnd = parseTimeToMinutes(lunchEndTime)
+    val end = parseTimeToMinutes(endTime)
+
+    if (start == null) return 0
+
+    // Full 4 stages: (lunchStart - start) + (end - lunchEnd)
+    if (lunchStart != null && lunchEnd != null && end != null) {
+        val shift1 = diffMinutes(start, lunchStart)
+        val shift2 = diffMinutes(lunchEnd, end)
+        return shift1 + shift2
+    }
+
+    // 2 stages: start and end (no lunch break)
+    if (end != null) {
+        return diffMinutes(start, end)
+    }
+
+    // Partial: start and lunchStart (finished shift 1)
+    if (lunchStart != null) {
+        return diffMinutes(start, lunchStart)
+    }
+
+    return 0
+}
 
 @Entity(tableName = "work_days")
 data class WorkDay(

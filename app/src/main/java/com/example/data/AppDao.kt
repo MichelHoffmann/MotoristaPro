@@ -19,6 +19,9 @@ interface AppDao {
     @Query("SELECT * FROM daily_earnings ORDER BY id DESC")
     fun getAllDailyEarnings(): Flow<List<DailyEarning>>
 
+    @Query("SELECT * FROM daily_earnings WHERE dateStr = :dateStr LIMIT 1")
+    suspend fun getDailyEarningByDate(dateStr: String): DailyEarning?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDailyEarning(earning: DailyEarning): Long
 

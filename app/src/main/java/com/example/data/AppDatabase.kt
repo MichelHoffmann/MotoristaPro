@@ -20,7 +20,7 @@ import com.example.model.WorkDay
         VehicleCostItem::class,
         FuelChargeRecord::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

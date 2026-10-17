@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.AddExpenseDialog
+import com.example.ui.components.AdjustWorkStagesDialog
 import com.example.ui.components.MoreSheet
 import com.example.ui.components.RecordDailyWorkDialog
 import com.example.ui.screens.*
@@ -62,6 +63,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
 
     // Dialog visibility states
     var showRecordDailyWorkDialog by remember { mutableStateOf(false) }
+    var showAdjustWorkStagesDialog by remember { mutableStateOf(false) }
     var showAddExpenseDialog by remember { mutableStateOf(false) }
 
     // Observe data from ViewModel
@@ -250,7 +252,9 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onAddDailyWorkClick = { showRecordDailyWorkDialog = true },
                     onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
-                    onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER }
+                    onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER },
+                    onRecordStageAction = { viewModel.recordWorkStageAction(it) },
+                    onAdjustStagesClick = { showAdjustWorkStagesDialog = true }
                 )
                 AppScreen.PLANNING -> PlanningScreen(
                     currentYearMonth = currentYearMonth,
@@ -314,12 +318,39 @@ fun MainAppScaffold(viewModel: MainViewModel) {
         )
     }
 
-    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados)
+    val todayDateStr = MainViewModel.getTodayDateString()
+    val todayEarningRecord = dailyEarnings.find { it.dateStr == todayDateStr }
+
+    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados e etapas de trabalho)
     if (showRecordDailyWorkDialog) {
         RecordDailyWorkDialog(
+            initialDate = todayDateStr,
+            initialAmount = todayEarningRecord?.totalAmount ?: 0.0,
+            initialTrips = todayEarningRecord?.tripsCount ?: 0,
+            initialKm = todayEarningRecord?.kmDriven ?: 0.0,
+            initialNotes = todayEarningRecord?.notes.orEmpty(),
+            initialStartTime = todayEarningRecord?.startTime.orEmpty(),
+            initialLunchStartTime = todayEarningRecord?.lunchStartTime.orEmpty(),
+            initialLunchEndTime = todayEarningRecord?.lunchEndTime.orEmpty(),
+            initialEndTime = todayEarningRecord?.endTime.orEmpty(),
             onDismiss = { showRecordDailyWorkDialog = false },
-            onConfirm = { date, amount, trips, km, notes ->
-                viewModel.recordDailyWork(date, amount, trips, km, notes)
+            onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end ->
+                viewModel.recordDailyWork(date, amount, trips, km, notes, start, lunchStart, lunchEnd, end)
+            }
+        )
+    }
+
+    // Dialog: Ajustar etapas da jornada de trabalho (mínimo de duas etapas para cálculo de horas)
+    if (showAdjustWorkStagesDialog) {
+        AdjustWorkStagesDialog(
+            initialDate = todayDateStr,
+            initialStartTime = todayEarningRecord?.startTime.orEmpty(),
+            initialLunchStartTime = todayEarningRecord?.lunchStartTime.orEmpty(),
+            initialLunchEndTime = todayEarningRecord?.lunchEndTime.orEmpty(),
+            initialEndTime = todayEarningRecord?.endTime.orEmpty(),
+            onDismiss = { showAdjustWorkStagesDialog = false },
+            onConfirm = { date, start, lunchStart, lunchEnd, end ->
+                viewModel.updateWorkStages(date, start, lunchStart, lunchEnd, end)
             }
         )
     }

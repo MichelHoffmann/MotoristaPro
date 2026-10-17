@@ -24,16 +24,59 @@ import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
 
+import com.example.model.calculateWorkStageMinutes
+
 @Composable
 fun RecordDailyWorkDialog(
+    initialDate: String = MainViewModel.getTodayDateString(),
+    initialAmount: Double = 0.0,
+    initialTrips: Int = 0,
+    initialKm: Double = 0.0,
+    initialNotes: String = "",
+    initialStartTime: String = "",
+    initialLunchStartTime: String = "",
+    initialLunchEndTime: String = "",
+    initialEndTime: String = "",
     onDismiss: () -> Unit,
-    onConfirm: (date: String, totalAmount: Double, tripsCount: Int, kmDriven: Double, notes: String) -> Unit
+    onConfirm: (
+        date: String,
+        totalAmount: Double,
+        tripsCount: Int,
+        kmDriven: Double,
+        notes: String,
+        startTime: String,
+        lunchStartTime: String,
+        lunchEndTime: String,
+        endTime: String
+    ) -> Unit
 ) {
-    var dateText by remember { mutableStateOf(MainViewModel.getTodayDateString()) }
-    var amountText by remember { mutableStateOf("") }
-    var tripsCountText by remember { mutableStateOf("") }
-    var kmDrivenText by remember { mutableStateOf("") }
-    var notesText by remember { mutableStateOf("") }
+    var dateText by remember { mutableStateOf(initialDate) }
+    var amountText by remember { mutableStateOf(if (initialAmount > 0) String.format(java.util.Locale.US, "%.2f", initialAmount) else "") }
+    var tripsCountText by remember { mutableStateOf(if (initialTrips > 0) initialTrips.toString() else "") }
+    var kmDrivenText by remember { mutableStateOf(if (initialKm > 0) String.format(java.util.Locale.US, "%.1f", initialKm) else "") }
+    var notesText by remember { mutableStateOf(initialNotes) }
+
+    // Etapas da Jornada de Trabalho
+    var startTimeText by remember { mutableStateOf(initialStartTime) }
+    var lunchStartTimeText by remember { mutableStateOf(initialLunchStartTime) }
+    var lunchEndTimeText by remember { mutableStateOf(initialLunchEndTime) }
+    var endTimeText by remember { mutableStateOf(initialEndTime) }
+
+    val calculatedMins = calculateWorkStageMinutes(
+        startTime = startTimeText,
+        lunchStartTime = lunchStartTimeText,
+        lunchEndTime = lunchEndTimeText,
+        endTime = endTimeText
+    )
+    val calculatedHours = calculatedMins / 60.0
+    val formattedTime = if (calculatedMins <= 0) "0h" else {
+        val h = calculatedMins / 60
+        val m = calculatedMins % 60
+        if (m == 0) "${h}h" else "${h}h ${m}min"
+    }
+
+    val currentAmount = amountText.replace(",", ".").toDoubleOrNull() ?: 0.0
+    val hourlyEarnings = if (calculatedHours > 0 && currentAmount > 0) currentAmount / calculatedHours else 0.0
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -45,7 +88,7 @@ fun RecordDailyWorkDialog(
                 modifier = Modifier
                     .padding(20.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -54,13 +97,13 @@ fun RecordDailyWorkDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Faturamento do Dia",
+                            text = "Faturamento & Jornada",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextWhite
                         )
                         Text(
-                            text = "Lance o total ganho e corridas feitas",
+                            text = "Ganhos, km e etapas de trabalho do dia",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -82,6 +125,118 @@ fun RecordDailyWorkDialog(
                     )
                 )
 
+                // Section: Etapas do Dia
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Etapas da Jornada de Trabalho",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EmeraldGreen
+                            )
+                            if (calculatedMins > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = EmeraldGreen.copy(alpha = 0.2f)
+                                ) {
+                                    Text(
+                                        text = formattedTime,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = EmeraldGreen,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Preencha ao menos 2 etapas (ex: Início e Fim, ou com Almoço):",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+
+                        // 1ª Etapa & 2ª Etapa
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = startTimeText,
+                                onValueChange = { startTimeText = it },
+                                label = { Text("1. Início (HH:mm)") },
+                                placeholder = { Text("08:00") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("input_start_time"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = EmeraldGreen,
+                                    unfocusedBorderColor = BorderDark
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = lunchStartTimeText,
+                                onValueChange = { lunchStartTimeText = it },
+                                label = { Text("2. Pausa Almoço") },
+                                placeholder = { Text("12:00") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("input_lunch_start_time"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = EmeraldGreen,
+                                    unfocusedBorderColor = BorderDark
+                                )
+                            )
+                        }
+
+                        // 3ª Etapa & 4ª Etapa
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = lunchEndTimeText,
+                                onValueChange = { lunchEndTimeText = it },
+                                label = { Text("3. Retorno Almoço") },
+                                placeholder = { Text("13:00") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("input_lunch_end_time"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = EmeraldGreen,
+                                    unfocusedBorderColor = BorderDark
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = endTimeText,
+                                onValueChange = { endTimeText = it },
+                                label = { Text("4. Fim Jornada") },
+                                placeholder = { Text("18:00") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("input_end_time"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = EmeraldGreen,
+                                    unfocusedBorderColor = BorderDark
+                                )
+                            )
+                        }
+
+                        if (hourlyEarnings > 0) {
+                            Text(
+                                text = "Média horária calculada: R$ ${String.format(java.util.Locale.US, "%.2f", hourlyEarnings).replace(".", ",")}/hora",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ProfitGreen
+                            )
+                        }
+                    }
+                }
+
+                // Section: Financeiro
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
@@ -144,14 +299,209 @@ fun RecordDailyWorkDialog(
                         val amt = amountText.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val trips = tripsCountText.toIntOrNull() ?: 0
                         val km = kmDrivenText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        onConfirm(dateText, amt, trips, km, notesText)
+                        onConfirm(
+                            dateText,
+                            amt,
+                            trips,
+                            km,
+                            notesText,
+                            startTimeText,
+                            lunchStartTimeText,
+                            lunchEndTimeText,
+                            endTimeText
+                        )
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().testTag("save_daily_work_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Salvar Faturamento do Dia", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Salvar Informações do Dia", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdjustWorkStagesDialog(
+    initialDate: String = MainViewModel.getTodayDateString(),
+    initialStartTime: String = "",
+    initialLunchStartTime: String = "",
+    initialLunchEndTime: String = "",
+    initialEndTime: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (
+        date: String,
+        startTime: String,
+        lunchStartTime: String,
+        lunchEndTime: String,
+        endTime: String
+    ) -> Unit
+) {
+    var startTimeText by remember { mutableStateOf(initialStartTime) }
+    var lunchStartTimeText by remember { mutableStateOf(initialLunchStartTime) }
+    var lunchEndTimeText by remember { mutableStateOf(initialLunchEndTime) }
+    var endTimeText by remember { mutableStateOf(initialEndTime) }
+
+    val calculatedMins = calculateWorkStageMinutes(
+        startTime = startTimeText,
+        lunchStartTime = lunchStartTimeText,
+        lunchEndTime = lunchEndTimeText,
+        endTime = endTimeText
+    )
+    val formattedTime = if (calculatedMins <= 0) "0h" else {
+        val h = calculatedMins / 60
+        val m = calculatedMins % 60
+        if (m == 0) "${h}h" else "${h}h ${m}min"
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = CardDark,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Etapas de Trabalho",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextWhite
+                        )
+                        Text(
+                            text = "Data: $initialDate",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = SurfaceDark,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Tempo Total Calculado", fontSize = 11.sp, color = TextSecondary)
+                            Text(formattedTime, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                        }
+                        Button(
+                            onClick = {
+                                val now = MainViewModel.getCurrentTimeString()
+                                when {
+                                    startTimeText.isBlank() -> startTimeText = now
+                                    lunchStartTimeText.isBlank() -> lunchStartTimeText = now
+                                    lunchEndTimeText.isBlank() -> lunchEndTimeText = now
+                                    endTimeText.isBlank() -> endTimeText = now
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("Agora (${MainViewModel.getCurrentTimeString()})", color = EmeraldGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Ajuste os horários das etapas (mínimo de 2 etapas):",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+
+                // Etapa 1: Início da Jornada
+                OutlinedTextField(
+                    value = startTimeText,
+                    onValueChange = { startTimeText = it },
+                    label = { Text("1. Início da Jornada (HH:mm)") },
+                    placeholder = { Text("Ex: 08:00") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("adjust_start_time"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
+                    )
+                )
+
+                // Etapa 2: Pausa para Almoço
+                OutlinedTextField(
+                    value = lunchStartTimeText,
+                    onValueChange = { lunchStartTimeText = it },
+                    label = { Text("2. Pausa para Almoço (HH:mm)") },
+                    placeholder = { Text("Ex: 12:00 (Opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("adjust_lunch_start_time"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
+                    )
+                )
+
+                // Etapa 3: Retorno do Almoço
+                OutlinedTextField(
+                    value = lunchEndTimeText,
+                    onValueChange = { lunchEndTimeText = it },
+                    label = { Text("3. Retorno do Almoço (HH:mm)") },
+                    placeholder = { Text("Ex: 13:00 (Opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("adjust_lunch_end_time"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
+                    )
+                )
+
+                // Etapa 4: Fim da Jornada
+                OutlinedTextField(
+                    value = endTimeText,
+                    onValueChange = { endTimeText = it },
+                    label = { Text("4. Fim da Jornada (HH:mm)") },
+                    placeholder = { Text("Ex: 18:00") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("adjust_end_time"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderDark
+                    )
+                )
+
+                Button(
+                    onClick = {
+                        onConfirm(
+                            initialDate,
+                            startTimeText,
+                            lunchStartTimeText,
+                            lunchEndTimeText,
+                            endTimeText
+                        )
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("save_adjust_stages_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Salvar Horários da Jornada", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }

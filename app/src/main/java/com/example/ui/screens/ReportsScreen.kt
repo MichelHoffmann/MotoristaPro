@@ -8,6 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +28,7 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.ChartBarPoint
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.PeriodFilter
+import java.util.Calendar
 
 @Composable
 fun ReportsScreen(
@@ -43,18 +47,100 @@ fun ReportsScreen(
         PeriodFilter.ANUAL -> 3
     }
 
-    // Dynamic totals from database
-    val totalEarnings = dailyEarnings.sumOf { it.totalAmount }
-    val totalExpensesAmount = expenses.sumOf { it.amount }
+    val todayDateStr = MainViewModel.getTodayDateString()
+    val cal = Calendar.getInstance()
+    val currentYear = cal.get(Calendar.YEAR)
+    val currentMonth = cal.get(Calendar.MONTH)
+    val currentWeek = cal.get(Calendar.WEEK_OF_YEAR)
+
+    // Filter earnings by period
+    val filteredEarnings = when (selectedPeriod) {
+        PeriodFilter.DIARIO -> dailyEarnings.filter { it.dateStr == todayDateStr }
+        PeriodFilter.SEMANAL -> dailyEarnings.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val d = parts[0].toIntOrNull() ?: 1
+                val m = parts[1].toIntOrNull()?.minus(1) ?: 0
+                val y = parts[2].toIntOrNull() ?: currentYear
+                val c = Calendar.getInstance().apply { set(y, m, d) }
+                c.get(Calendar.WEEK_OF_YEAR) == currentWeek && c.get(Calendar.YEAR) == currentYear
+            } else true
+        }
+        PeriodFilter.MENSAL -> dailyEarnings.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val m = parts[1].toIntOrNull()?.minus(1) ?: 0
+                val y = parts[2].toIntOrNull() ?: currentYear
+                m == currentMonth && y == currentYear
+            } else true
+        }
+        PeriodFilter.ANUAL -> dailyEarnings.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val y = parts[2].toIntOrNull() ?: currentYear
+                y == currentYear
+            } else true
+        }
+    }
+
+    // Filter expenses by period
+    val filteredExpenses = when (selectedPeriod) {
+        PeriodFilter.DIARIO -> expenses.filter { it.dateStr == todayDateStr }
+        PeriodFilter.SEMANAL -> expenses.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val d = parts[0].toIntOrNull() ?: 1
+                val m = parts[1].toIntOrNull()?.minus(1) ?: 0
+                val y = parts[2].toIntOrNull() ?: currentYear
+                val c = Calendar.getInstance().apply { set(y, m, d) }
+                c.get(Calendar.WEEK_OF_YEAR) == currentWeek && c.get(Calendar.YEAR) == currentYear
+            } else true
+        }
+        PeriodFilter.MENSAL -> expenses.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val m = parts[1].toIntOrNull()?.minus(1) ?: 0
+                val y = parts[2].toIntOrNull() ?: currentYear
+                m == currentMonth && y == currentYear
+            } else true
+        }
+        PeriodFilter.ANUAL -> expenses.filter {
+            val parts = it.dateStr.split("/")
+            if (parts.size == 3) {
+                val y = parts[2].toIntOrNull() ?: currentYear
+                y == currentYear
+            } else true
+        }
+    }
+
+    // Totals for selected period
+    val totalEarnings = filteredEarnings.sumOf { it.totalAmount }
+    val totalExpensesAmount = filteredExpenses.sumOf { it.amount }
     val netProfit = totalEarnings - totalExpensesAmount
-    val totalKm = dailyEarnings.sumOf { it.kmDriven }
-    val totalTrips = dailyEarnings.sumOf { it.tripsCount }
+    val totalKm = filteredEarnings.sumOf { it.kmDriven }
+    val totalTrips = filteredEarnings.sumOf { it.tripsCount }
     val ratePerKm = if (totalKm > 0) totalEarnings / totalKm else 0.0
 
+    // Work Time Analytics
+    val totalWorkedMinutes = filteredEarnings.sumOf { it.calculatedMinutes }
+    val totalWorkedHours = totalWorkedMinutes / 60.0
+    val daysWithLoggedStages = filteredEarnings.count { it.calculatedMinutes > 0 }
+    val avgHoursPerDay = if (daysWithLoggedStages > 0) totalWorkedHours / daysWithLoggedStages else 0.0
+    val ratePerHour = if (totalWorkedHours > 0) totalEarnings / totalWorkedHours else 0.0
+    val netProfitPerHour = if (totalWorkedHours > 0) netProfit / totalWorkedHours else 0.0
+    val tripsPerHour = if (totalWorkedHours > 0) totalTrips / totalWorkedHours else 0.0
+    val kmPerHour = if (totalWorkedHours > 0) totalKm / totalWorkedHours else 0.0
+
+    val formattedTotalWorkedTime = if (totalWorkedMinutes <= 0) "0h" else {
+        val h = totalWorkedMinutes / 60
+        val m = totalWorkedMinutes % 60
+        if (m == 0) "${h}h" else "${h}h ${m}min"
+    }
+
     // Category breakdown
-    val fuelExpense = expenses.filter { it.category.equals("combustível", ignoreCase = true) || it.category.equals("combustivel", ignoreCase = true) }.sumOf { it.amount }
-    val foodExpense = expenses.filter { it.category.equals("alimentação", ignoreCase = true) || it.category.equals("alimentacao", ignoreCase = true) }.sumOf { it.amount }
-    val maintenanceExpense = expenses.filter { it.category.equals("manutenção", ignoreCase = true) || it.category.equals("manutencao", ignoreCase = true) }.sumOf { it.amount }
+    val fuelExpense = filteredExpenses.filter { it.category.equals("combustível", ignoreCase = true) || it.category.equals("combustivel", ignoreCase = true) }.sumOf { it.amount }
+    val foodExpense = filteredExpenses.filter { it.category.equals("alimentação", ignoreCase = true) || it.category.equals("alimentacao", ignoreCase = true) }.sumOf { it.amount }
+    val maintenanceExpense = filteredExpenses.filter { it.category.equals("manutenção", ignoreCase = true) || it.category.equals("manutencao", ignoreCase = true) }.sumOf { it.amount }
 
     val fuelPercent = if (totalExpensesAmount > 0) ((fuelExpense / totalExpensesAmount) * 100).toInt() else 0
     val foodPercent = if (totalExpensesAmount > 0) ((foodExpense / totalExpensesAmount) * 100).toInt() else 0
