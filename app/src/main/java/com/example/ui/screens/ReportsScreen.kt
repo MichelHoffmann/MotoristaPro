@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,7 @@ fun ReportsScreen(
     selectedPeriod: PeriodFilter,
     onPeriodSelected: (PeriodFilter) -> Unit,
     chartData: List<ChartBarPoint>,
+    onAddEarningsForDate: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val periodTabs = listOf("Diário", "Semanal", "Mensal", "Anual")
@@ -476,7 +478,8 @@ fun ReportsScreen(
             }
         }
 
-        // Efficiency Metrics
+        // Efficiency Metrics with Tabela Fixa R$ 2,00/km
+        val standardTableRate = 2.00
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -486,9 +489,21 @@ fun ReportsScreen(
                 colors = CardDefaults.cardColors(containerColor = CardDark),
                 modifier = Modifier.weight(1f)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Ganho por km", fontSize = 12.sp, color = TextSecondary)
-                    Text(String.format("R$ %.2f/km", ratePerKm).replace(".", ","), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Média R$/km no Período", fontSize = 12.sp, color = TextSecondary)
+                    Text(
+                        text = if (totalKm > 0) String.format("R$ %.2f/km", ratePerKm).replace(".", ",") else "R$ 2,00/km",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (totalKm > 0 && ratePerKm >= standardTableRate) ProfitGreen else EmeraldGreen
+                    )
+                    Text(
+                        text = if (totalKm > 0) {
+                            if (ratePerKm >= standardTableRate) "✓ Acima da tabela R$ 2,00" else "⚠ Abaixo da tabela R$ 2,00"
+                        } else "Tabela padrão: R$ 2,00/km",
+                        fontSize = 10.sp,
+                        color = if (totalKm > 0 && ratePerKm < standardTableRate) FuelOrange else EmeraldGreen
+                    )
                 }
             }
             Card(
@@ -496,11 +511,331 @@ fun ReportsScreen(
                 colors = CardDefaults.cardColors(containerColor = CardDark),
                 modifier = Modifier.weight(1f)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Total Corridas Feitas", fontSize = 12.sp, color = TextSecondary)
-                    Text("$totalTrips corridas", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Total de Corridas", fontSize = 12.sp, color = TextSecondary)
+                    Text("$totalTrips corridas", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextWhite)
+                    Text(
+                        text = if (filteredEarnings.isNotEmpty()) "${filteredEarnings.size} dias com registros" else "Nenhum registro",
+                        fontSize = 10.sp,
+                        color = TextSecondary
+                    )
                 }
             }
+        }
+
+        // Relatório de Tempo de Trabalho & Produtividade
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EmeraldGreen.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Schedule,
+                            contentDescription = null,
+                            tint = EmeraldGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Tempo de Trabalho & Produtividade",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextWhite
+                        )
+                        Text(
+                            text = "Cálculo real das horas trabalhadas por etapas",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+
+                // Grid 1: Total Hours & Daily Average
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Horas Trabalhadas", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = formattedTotalWorkedTime,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = EmeraldGreen
+                            )
+                            Text(
+                                text = if (daysWithLoggedStages > 0) "$daysWithLoggedStages dias com jornada" else "Nenhuma etapa lançada",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Média por Dia", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (daysWithLoggedStages > 0) String.format(java.util.Locale.getDefault(), "%.1fh/dia", avgHoursPerDay) else "0h/dia",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextWhite
+                            )
+                            Text(
+                                text = "Média de dias trabalhados",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                // Grid 2: Hourly Rate & Net Profit per Hour
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Ganho Bruto / Hora", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (totalWorkedHours > 0) String.format(java.util.Locale.getDefault(), "R$ %.2f/h", ratePerHour).replace(".", ",") else "—",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ProfitGreen
+                            )
+                            Text(
+                                text = "Faturamento por hora",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Lucro Líquido / Hora", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (totalWorkedHours > 0) String.format(java.util.Locale.getDefault(), "R$ %.2f/h", netProfitPerHour).replace(".", ",") else "—",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (netProfitPerHour >= 0) EmeraldGreen else ExpenseRedSoft
+                            )
+                            Text(
+                                text = "Após descontar custos",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                // Grid 3: Speed & Trips per hour
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Velocidade Média", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (totalWorkedHours > 0) String.format(java.util.Locale.getDefault(), "%.1f km/h", kmPerHour).replace(".", ",") else "—",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MetricBlue
+                            )
+                            Text("Km rodados / hora", fontSize = 10.sp, color = TextSecondary)
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Ritmo de Corridas", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (totalWorkedHours > 0) String.format(java.util.Locale.getDefault(), "%.2f /h", tripsPerHour).replace(".", ",") else "—",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MetricPurple
+                            )
+                            Text("Corridas feitas / hora", fontSize = 10.sp, color = TextSecondary)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Histórico Detalhado dos Dias Trabalhados e Horas
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Histórico de Dias & Etapas",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite
+                    )
+                    TextButton(onClick = { onAddEarningsForDate("") }) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+ Lançar Dia", color = EmeraldGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (filteredEarnings.isEmpty()) {
+                    Text(
+                        text = "Nenhum dia lançado neste período. Use o botão acima para adicionar ganhos de dias passados.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else {
+                    filteredEarnings.sortedByDescending { it.id }.forEach { earning ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = SurfaceDark,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onAddEarningsForDate(earning.dateStr) }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Event, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
+                                        Text(
+                                            text = earning.dateStr,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextWhite,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = EmeraldGreen.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "⏱ ${earning.formattedWorkedTime}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = EmeraldGreen,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "${MainViewModel.formatCurrency(earning.totalAmount)} • ${earning.tripsCount} corridas • ${MainViewModel.formatKm(earning.kmDriven)}",
+                                        fontSize = 12.sp,
+                                        color = ProfitGreen,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    val dayRate = if (earning.kmDriven > 0) earning.totalAmount / earning.kmDriven else 0.0
+                                    Text(
+                                        text = if (dayRate > 0) String.format("R$ %.2f/km", dayRate).replace(".", ",") else "—",
+                                        fontSize = 12.sp,
+                                        color = if (dayRate >= 2.00) EmeraldGreen else FuelOrange,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                if (earning.startTime.isNotBlank() || earning.endTime.isNotBlank()) {
+                                    Text(
+                                        text = "Etapas: Início ${earning.startTime.ifBlank { "--:--" }} • Pausa ${earning.lunchStartTime.ifBlank { "--:--" }} • Retorno ${earning.lunchEndTime.ifBlank { "--:--" }} • Fim ${earning.endTime.ifBlank { "--:--" }}",
+                                        fontSize = 10.5.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Action Button: Lançar Faturamento de Outro Dia / Passado
+        OutlinedButton(
+            onClick = { onAddEarningsForDate("") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
+        ) {
+            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Lançar Ganhos de Outro Dia / Passado", fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
 
         Spacer(modifier = Modifier.height(20.dp))

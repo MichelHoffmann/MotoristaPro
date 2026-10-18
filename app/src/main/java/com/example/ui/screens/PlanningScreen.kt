@@ -46,11 +46,13 @@ fun PlanningScreen(
     onToggleWorkDay: (String) -> Unit,
     onApplySchedule: (QuickWorkSchedule) -> Unit,
     onUpdateMonthlyGoal: (Double) -> Unit,
+    onAddEarningsForDate: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val (year, month) = currentYearMonth
     var showEditGoalDialog by remember { mutableStateOf(false) }
     var selectedHolidayForDetails by remember { mutableStateOf<Holiday?>(null) }
+    var selectedDayForAction by remember { mutableStateOf<String?>(null) }
 
     // Calendar Calculations
     val cal = Calendar.getInstance()
@@ -120,7 +122,7 @@ fun PlanningScreen(
         (((totalProfitThisMonth.coerceAtLeast(0.0)) / monthlyGoal) * 100).toInt().coerceIn(0, 100)
     } else 0
 
-    val minRatePerKm = 2.10
+    val minRatePerKm = 2.00
     val estimatedDailyKm = if (requiredDailyGoal > 0) kotlin.math.ceil(requiredDailyGoal / minRatePerKm) else 0.0
 
     Column(
@@ -269,7 +271,7 @@ fun PlanningScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Quilometragem provável: ~${estimatedDailyKm.toInt()} km/dia para atingir a meta diária (considerando piso de R$ 2,10/km).",
+                        text = "Quilometragem provável: ~${estimatedDailyKm.toInt()} km/dia para atingir a meta diária (considerando tabela padrão de R$ 2,00/km).",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -469,12 +471,7 @@ fun PlanningScreen(
                                             else Modifier
                                         )
                                         .clickable {
-                                            if (holiday != null) {
-                                                // If tapped and has holiday, show details or toggle work
-                                                onToggleWorkDay(dateStr)
-                                            } else {
-                                                onToggleWorkDay(dateStr)
-                                            }
+                                            selectedDayForAction = dateStr
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -557,6 +554,22 @@ fun PlanningScreen(
                     }
                 }
             }
+        }
+
+        // Button: Lançar Faturamento de Outro Dia / Passado
+        OutlinedButton(
+            onClick = { onAddEarningsForDate("") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("btn_launch_past_earnings_planning"),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
+        ) {
+            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Lançar Ganhos de Outro Dia / Passado", fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
 
         // List of Holidays in this Month with full description and details
@@ -801,6 +814,175 @@ fun PlanningScreen(
                         ) {
                             Text("Salvar Meta", color = Color.White, fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    selectedDayForAction?.let { dateStr ->
+        val parts = dateStr.split("/")
+        val dayNum = parts.getOrNull(0)?.toIntOrNull() ?: 1
+        val monthNum = parts.getOrNull(1)?.toIntOrNull() ?: (month + 1)
+        val yearNum = parts.getOrNull(2)?.toIntOrNull() ?: year
+
+        val holiday = BrazilianHolidays.getHoliday(dayNum, monthNum, yearNum)
+        val isWork = workDays.any { it.dateStr == dateStr && it.isWorkDay }
+        val dayEarning = dailyEarnings.find { it.dateStr == dateStr }
+        val hasEarnings = dayEarning != null && (dayEarning.totalAmount > 0 || dayEarning.kmDriven > 0 || dayEarning.tripsCount > 0)
+
+        Dialog(onDismissRequest = { selectedDayForAction = null }) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = CardDark,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Dia $dateStr",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextWhite
+                            )
+                            if (holiday != null) {
+                                Text(
+                                    text = "🎉 ${holiday.name} (${holiday.type.displayName})",
+                                    fontSize = 12.sp,
+                                    color = FuelOrange,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        IconButton(onClick = { selectedDayForAction = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextSecondary)
+                        }
+                    }
+
+                    // Status de Trabalho
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isWork) EmeraldGreen.copy(alpha = 0.15f) else SurfaceDark,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    imageVector = if (isWork) Icons.Default.CheckCircle else Icons.Default.EventBusy,
+                                    contentDescription = null,
+                                    tint = if (isWork) EmeraldGreen else TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = if (isWork) "Dia Marcado para Trabalhar" else "Dia Marcado como Folga",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isWork) EmeraldGreen else TextSecondary
+                                    )
+                                    Text(
+                                        text = if (isWork) "Conta na meta mensal" else "Não afeta a meta diária",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                            TextButton(
+                                onClick = { onToggleWorkDay(dateStr) }
+                            ) {
+                                Text(if (isWork) "Tornar Folga" else "Tornar Trabalho", color = EmeraldGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // Informações de Ganhos / Horas deste dia
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SurfaceDark,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Lançamento Financeiro do Dia",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary
+                            )
+                            if (hasEarnings && dayEarning != null) {
+                                Text(
+                                    text = "Faturamento: ${MainViewModel.formatCurrency(dayEarning.totalAmount)}",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ProfitGreen
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "${dayEarning.tripsCount} corridas • ${MainViewModel.formatKm(dayEarning.kmDriven)}",
+                                        fontSize = 12.sp,
+                                        color = TextWhite
+                                    )
+                                    Text(
+                                        text = "Tempo: ${dayEarning.formattedWorkedTime}",
+                                        fontSize = 12.sp,
+                                        color = EmeraldGreen,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                if (dayEarning.startTime.isNotBlank() || dayEarning.endTime.isNotBlank()) {
+                                    Text(
+                                        text = "Etapas: Início ${dayEarning.startTime.ifBlank { "--:--" }} • Fim ${dayEarning.endTime.ifBlank { "--:--" }}",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "Nenhum faturamento registrado para esta data.",
+                                    fontSize = 13.sp,
+                                    color = TextWhite
+                                )
+                            }
+                        }
+                    }
+
+                    // Botão para lançar / editar ganhos deste dia
+                    Button(
+                        onClick = {
+                            selectedDayForAction = null
+                            onAddEarningsForDate(dateStr)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("btn_day_action_record_earnings"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.AttachMoney, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (hasEarnings) "Editar Faturamento Deste Dia" else "Lançar Faturamento Deste Dia",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }

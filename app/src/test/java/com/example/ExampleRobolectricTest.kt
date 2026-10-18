@@ -82,7 +82,33 @@ class ExampleRobolectricTest {
     assertEquals(1400.0, result.monthlyFixedCosts, 0.01) // 1200 + 200
     assertEquals(70.0, result.dailyFixedCost, 0.01) // 1400 / 20 dias
     assertTrue("Custo por km deve ser positivo", result.estimatedCostPerKm > 0)
-    assertTrue("Valor mínimo por km deve ser positivo", result.recommendedMinRatePerKm > 0)
+    assertTrue("Valor mínimo por km deve respeitar tabela mínima de R$ 2,00", result.recommendedMinRatePerKm >= 2.00)
     assertTrue("Valor mínimo por hora deve ser positivo", result.recommendedMinRatePerHour > 0)
+  }
+
+  @Test
+  fun `test work stages minutes and hours calculation`() {
+    // 08:00 to 12:00 (4h = 240min), pausa almoço 12:00 às 13:00 (1h), retorno 13:00 às 17:30 (4h30 = 270min) -> Total 510min (8h 30min)
+    val mins = calculateWorkStageMinutes(
+      startTime = "08:00",
+      lunchStartTime = "12:00",
+      lunchEndTime = "13:00",
+      endTime = "17:30"
+    )
+    assertEquals(510, mins)
+
+    val earning = DailyEarning(
+      dateStr = "15/10/2026",
+      totalAmount = 340.0,
+      tripsCount = 14,
+      kmDriven = 160.0,
+      startTime = "08:00",
+      lunchStartTime = "12:00",
+      lunchEndTime = "13:00",
+      endTime = "17:30"
+    )
+    assertEquals(510, earning.calculatedMinutes)
+    assertEquals(8.5, earning.calculatedHours, 0.01)
+    assertEquals("8h 30min", earning.formattedWorkedTime)
   }
 }

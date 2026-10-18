@@ -8,7 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,10 +21,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.model.DailyEarning
+import com.example.model.calculateWorkStageMinutes
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
-
-import com.example.model.calculateWorkStageMinutes
 
 @Composable
 fun RecordDailyWorkDialog(
@@ -37,6 +37,7 @@ fun RecordDailyWorkDialog(
     initialLunchStartTime: String = "",
     initialLunchEndTime: String = "",
     initialEndTime: String = "",
+    existingEarnings: List<DailyEarning> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
         date: String,
@@ -50,6 +51,20 @@ fun RecordDailyWorkDialog(
         endTime: String
     ) -> Unit
 ) {
+    val todayDateStr = remember { MainViewModel.getTodayDateString() }
+    val yesterdayDateStr = remember {
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+        sdf.format(cal.time)
+    }
+    val dayBeforeYesterdayDateStr = remember {
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -2)
+        val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+        sdf.format(cal.time)
+    }
+
     var dateText by remember { mutableStateOf(initialDate) }
     var amountText by remember { mutableStateOf(if (initialAmount > 0) String.format(java.util.Locale.US, "%.2f", initialAmount) else "") }
     var tripsCountText by remember { mutableStateOf(if (initialTrips > 0) initialTrips.toString() else "") }
@@ -61,6 +76,30 @@ fun RecordDailyWorkDialog(
     var lunchStartTimeText by remember { mutableStateOf(initialLunchStartTime) }
     var lunchEndTimeText by remember { mutableStateOf(initialLunchEndTime) }
     var endTimeText by remember { mutableStateOf(initialEndTime) }
+
+    fun loadDataForDate(targetDate: String) {
+        dateText = targetDate
+        val found = existingEarnings.find { it.dateStr == targetDate }
+        if (found != null) {
+            amountText = if (found.totalAmount > 0) String.format(java.util.Locale.US, "%.2f", found.totalAmount) else ""
+            tripsCountText = if (found.tripsCount > 0) found.tripsCount.toString() else ""
+            kmDrivenText = if (found.kmDriven > 0) String.format(java.util.Locale.US, "%.1f", found.kmDriven) else ""
+            notesText = found.notes
+            startTimeText = found.startTime
+            lunchStartTimeText = found.lunchStartTime
+            lunchEndTimeText = found.lunchEndTime
+            endTimeText = found.endTime
+        } else if (targetDate != initialDate) {
+            amountText = ""
+            tripsCountText = ""
+            kmDrivenText = ""
+            notesText = ""
+            startTimeText = ""
+            lunchStartTimeText = ""
+            lunchEndTimeText = ""
+            endTimeText = ""
+        }
+    }
 
     val calculatedMins = calculateWorkStageMinutes(
         startTime = startTimeText,
@@ -77,6 +116,7 @@ fun RecordDailyWorkDialog(
 
     val currentAmount = amountText.replace(",", ".").toDoubleOrNull() ?: 0.0
     val hourlyEarnings = if (calculatedHours > 0 && currentAmount > 0) currentAmount / calculatedHours else 0.0
+    val existingForCurrentDate = existingEarnings.find { it.dateStr == dateText }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -97,13 +137,13 @@ fun RecordDailyWorkDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Faturamento & Jornada",
+                            text = "Lançar Faturamento & Jornada",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextWhite
                         )
                         Text(
-                            text = "Ganhos, km e etapas de trabalho do dia",
+                            text = "Ganhos, km e etapas de qualquer dia",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -113,10 +153,69 @@ fun RecordDailyWorkDialog(
                     }
                 }
 
+                // Quick Date selection chips (Hoje, Ontem, Outro Dia)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Selecione a Data do Lançamento:",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = dateText == todayDateStr,
+                            onClick = { loadDataForDate(todayDateStr) },
+                            label = { Text("Hoje", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldGreen,
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                        FilterChip(
+                            selected = dateText == yesterdayDateStr,
+                            onClick = { loadDataForDate(yesterdayDateStr) },
+                            label = { Text("Ontem", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldGreen,
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                        FilterChip(
+                            selected = dateText == dayBeforeYesterdayDateStr,
+                            onClick = { loadDataForDate(dayBeforeYesterdayDateStr) },
+                            label = { Text("Anteontem", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldGreen,
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = dateText,
-                    onValueChange = { dateText = it },
+                    onValueChange = { newDate ->
+                        dateText = newDate
+                        val found = existingEarnings.find { it.dateStr == newDate }
+                        if (found != null) {
+                            amountText = if (found.totalAmount > 0) String.format(java.util.Locale.US, "%.2f", found.totalAmount) else ""
+                            tripsCountText = if (found.tripsCount > 0) found.tripsCount.toString() else ""
+                            kmDrivenText = if (found.kmDriven > 0) String.format(java.util.Locale.US, "%.1f", found.kmDriven) else ""
+                            notesText = found.notes
+                            startTimeText = found.startTime
+                            lunchStartTimeText = found.lunchStartTime
+                            lunchEndTimeText = found.lunchEndTime
+                            endTimeText = found.endTime
+                        }
+                    },
                     label = { Text("Data (DD/MM/AAAA)") },
+                    placeholder = { Text("Ex: 15/10/2026") },
+                    leadingIcon = {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -124,6 +223,28 @@ fun RecordDailyWorkDialog(
                         unfocusedBorderColor = BorderDark
                     )
                 )
+
+                if (existingForCurrentDate != null) {
+                    Surface(
+                        color = EmeraldGreen.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = "Dados salvos deste dia carregados para edição",
+                                fontSize = 11.sp,
+                                color = EmeraldGreen,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
 
                 // Section: Etapas do Dia
                 Card(

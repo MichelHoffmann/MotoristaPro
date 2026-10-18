@@ -46,6 +46,7 @@ fun HomeScreen(
     onOpenProfileMenu: () -> Unit,
     onRecordStageAction: (stage: String) -> Unit = {},
     onAdjustStagesClick: () -> Unit = {},
+    onAddPastDailyWorkClick: () -> Unit = onAddDailyWorkClick,
     modifier: Modifier = Modifier
 ) {
     val todayDateStr = MainViewModel.getTodayDateString()
@@ -128,8 +129,8 @@ fun HomeScreen(
         ((todayEarnings / requiredDailyGrossTarget) * 100).toInt().coerceIn(0, 100)
     } else if (todayEarnings > 0) 100 else 0
 
-    // Minimum baseline of R$ 2.10 per km rodado
-    val minFloorRatePerKm = 2.10
+    // Tabela fixa padrão do app de R$ 2,00 por km rodado
+    val minFloorRatePerKm = 2.00
     val effectiveMinRatePerKm = maxOf(viabilityResult.recommendedMinRatePerKm, minFloorRatePerKm)
 
     // Probable km driven during the day to reach the daily goal
@@ -388,7 +389,7 @@ fun HomeScreen(
             }
         }
 
-        // Metrics Grid Row: Corridas | Km rodados | R$/km (Piso mínimo R$ 2,10/km)
+        // Metrics Grid Row: Corridas | Km rodados | R$/km (Tabela padrão R$ 2,00/km)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -444,7 +445,7 @@ fun HomeScreen(
                 }
             }
 
-            // R$/km no dia (Sempre considerando mínimo R$ 2,10)
+            // R$/km no dia (Tabela fixa padrão R$ 2,00/km)
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -454,7 +455,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("Média R$/km", fontSize = 12.sp, color = TextSecondary)
+                    Text("Tabela R$/km", fontSize = 12.sp, color = TextSecondary)
                     Text(
                         text = if (hasTodayData) String.format("R$ %.2f", todayRatePerKm).replace(".", ",") else String.format("R$ %.2f", minFloorRatePerKm).replace(".", ","),
                         fontSize = 18.sp,
@@ -463,8 +464,8 @@ fun HomeScreen(
                     )
                     Text(
                         text = if (hasTodayData) {
-                            if (todayRatePerKm >= minFloorRatePerKm) "✓ Acima de R$ 2,10" else "⚠ Abaixo de R$ 2,10"
-                        } else "Piso mín: R$ 2,10",
+                            if (todayRatePerKm >= minFloorRatePerKm) "✓ Acima de R$ 2,00" else "⚠ Abaixo de R$ 2,00"
+                        } else "Tabela: R$ 2,00",
                         fontSize = 10.sp,
                         color = if (hasTodayData && todayRatePerKm < minFloorRatePerKm) FuelOrange else EmeraldGreen
                     )
@@ -921,7 +922,7 @@ fun HomeScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Tarifas Mínimas Recomendadas",
+                        text = "Tabela Padrão de Corridas",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = EmeraldGreen
@@ -933,7 +934,7 @@ fun HomeScreen(
                         color = TextWhite
                     )
                     Text(
-                        text = "Piso mínimo de segurança: R$ 2,10 por km rodado",
+                        text = "Tabela fixa padrão do app: R$ 2,00 por km rodado",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -947,12 +948,12 @@ fun HomeScreen(
             }
         }
 
-        // Action Button: + Registrar Faturamento e Corridas do Dia (sem botão de despesa)
+        // Action Buttons: + Registrar Faturamento de Hoje & + Lançar Outro Dia / Passado
         Button(
             onClick = onAddDailyWorkClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(52.dp)
                 .testTag("btn_register_earning"),
             colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
             shape = RoundedCornerShape(14.dp)
@@ -961,14 +962,37 @@ fun HomeScreen(
                 imageVector = Icons.Default.Add,
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Registrar Faturamento do Dia",
-                fontSize = 16.sp,
+                text = "Registrar Faturamento de Hoje",
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
+            )
+        }
+
+        OutlinedButton(
+            onClick = onAddPastDailyWorkClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("btn_register_past_earning"),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
+        ) {
+            Icon(
+                imageVector = Icons.Default.DateRange,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Lançar Faturamento de Outro Dia / Passado",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
             )
         }
 

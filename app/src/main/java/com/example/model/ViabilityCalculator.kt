@@ -135,9 +135,9 @@ object ViabilityCalculator {
         val paidKmRatio = (1.0 - (profile.deadheadPercentage.coerceIn(0.0, 60.0) / 100.0)).coerceAtLeast(0.4)
         val dailyPaidKm = avgKm * paidKmRatio
 
-        // Valor mínimo recomendado por km rodado remunerado (piso obrigatório de R$ 2,10/km)
-        val calculatedRatePerKm = if (dailyPaidKm > 0) dailyTargetRevenue / dailyPaidKm else 2.10
-        val recommendedRatePerKm = maxOf(calculatedRatePerKm, 2.10)
+        // Tabela fixa padrão do app em R$ 2,00 por km rodado
+        val calculatedRatePerKm = if (dailyPaidKm > 0) dailyTargetRevenue / dailyPaidKm else 2.00
+        val recommendedRatePerKm = maxOf(calculatedRatePerKm, 2.00)
 
         // Quilometragem estimada total que o motorista provavelmente rodará no dia para atingir a meta
         val estimatedDailyKmToGoal = if (paidKmRatio > 0 && recommendedRatePerKm > 0) {
@@ -157,7 +157,7 @@ object ViabilityCalculator {
             append("restando ${String.format("%.1f", dailyPaidKm).replace(".", ",")} km remunerados.\n")
             append("4. Para atingir sua meta de lucro líquido de R$ ${String.format("%.2f", monthlyGoal).replace(".", ",")}, ")
             append("você precisará faturar R$ ${String.format("%.2f", dailyTargetRevenue).replace(".", ",")} por dia e provavelmente rodará cerca de ~${estimatedDailyKmToGoal.toInt()} km no dia.\n")
-            append("5. Tarifa mínima obrigatória: R$ ${String.format("%.2f", recommendedRatePerKm).replace(".", ",")} por km rodado (piso de R$ 2,10/km) e R$ ${String.format("%.2f", recommendedRatePerHour).replace(".", ",")} por hora.")
+            append("5. Tabela fixa padrão do app: R$ ${String.format("%.2f", recommendedRatePerKm).replace(".", ",")} por km rodado (tabela padrão de R$ 2,00/km) e R$ ${String.format("%.2f", recommendedRatePerHour).replace(".", ",")} por hora.")
         }
 
         return ViabilityCalculationResult(

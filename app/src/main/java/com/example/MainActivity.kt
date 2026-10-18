@@ -63,6 +63,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
 
     // Dialog visibility states
     var showRecordDailyWorkDialog by remember { mutableStateOf(false) }
+    var recordDialogTargetDate by remember { mutableStateOf<String?>(null) }
     var showAdjustWorkStagesDialog by remember { mutableStateOf(false) }
     var showAddExpenseDialog by remember { mutableStateOf(false) }
 
@@ -249,7 +250,17 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     workDays = workDays,
                     vehicleProfile = vehicleProfile,
                     viabilityResult = viabilityResult,
-                    onAddDailyWorkClick = { showRecordDailyWorkDialog = true },
+                    onAddDailyWorkClick = {
+                        recordDialogTargetDate = MainViewModel.getTodayDateString()
+                        showRecordDailyWorkDialog = true
+                    },
+                    onAddPastDailyWorkClick = {
+                        val cal = java.util.Calendar.getInstance()
+                        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                        val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                        recordDialogTargetDate = sdf.format(cal.time)
+                        showRecordDailyWorkDialog = true
+                    },
                     onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER },
@@ -266,14 +277,22 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onPreviousMonth = { viewModel.previousMonth() },
                     onToggleWorkDay = { viewModel.toggleWorkDay(it) },
                     onApplySchedule = { viewModel.applyQuickSchedule(it) },
-                    onUpdateMonthlyGoal = { viewModel.updateMonthlyGoal(it) }
+                    onUpdateMonthlyGoal = { viewModel.updateMonthlyGoal(it) },
+                    onAddEarningsForDate = { date ->
+                        recordDialogTargetDate = date.ifBlank { null }
+                        showRecordDailyWorkDialog = true
+                    }
                 )
                 AppScreen.REPORTS -> ReportsScreen(
                     dailyEarnings = dailyEarnings,
                     expenses = expenses,
                     selectedPeriod = selectedPeriod,
                     onPeriodSelected = { viewModel.setPeriodFilter(it) },
-                    chartData = viewModel.getDynamicChartData(dailyEarnings, expenses)
+                    chartData = viewModel.getDynamicChartData(dailyEarnings, expenses),
+                    onAddEarningsForDate = { date ->
+                        recordDialogTargetDate = date.ifBlank { null }
+                        showRecordDailyWorkDialog = true
+                    }
                 )
                 AppScreen.EXPENSES -> ExpensesScreen(
                     expenses = expenses,
@@ -320,22 +339,26 @@ fun MainAppScaffold(viewModel: MainViewModel) {
 
     val todayDateStr = MainViewModel.getTodayDateString()
     val todayEarningRecord = dailyEarnings.find { it.dateStr == todayDateStr }
+    val targetRecordDate = recordDialogTargetDate ?: todayDateStr
+    val targetEarningRecord = dailyEarnings.find { it.dateStr == targetRecordDate }
 
     // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados e etapas de trabalho)
     if (showRecordDailyWorkDialog) {
         RecordDailyWorkDialog(
-            initialDate = todayDateStr,
-            initialAmount = todayEarningRecord?.totalAmount ?: 0.0,
-            initialTrips = todayEarningRecord?.tripsCount ?: 0,
-            initialKm = todayEarningRecord?.kmDriven ?: 0.0,
-            initialNotes = todayEarningRecord?.notes.orEmpty(),
-            initialStartTime = todayEarningRecord?.startTime.orEmpty(),
-            initialLunchStartTime = todayEarningRecord?.lunchStartTime.orEmpty(),
-            initialLunchEndTime = todayEarningRecord?.lunchEndTime.orEmpty(),
-            initialEndTime = todayEarningRecord?.endTime.orEmpty(),
+            initialDate = targetRecordDate,
+            initialAmount = targetEarningRecord?.totalAmount ?: 0.0,
+            initialTrips = targetEarningRecord?.tripsCount ?: 0,
+            initialKm = targetEarningRecord?.kmDriven ?: 0.0,
+            initialNotes = targetEarningRecord?.notes.orEmpty(),
+            initialStartTime = targetEarningRecord?.startTime.orEmpty(),
+            initialLunchStartTime = targetEarningRecord?.lunchStartTime.orEmpty(),
+            initialLunchEndTime = targetEarningRecord?.lunchEndTime.orEmpty(),
+            initialEndTime = targetEarningRecord?.endTime.orEmpty(),
+            existingEarnings = dailyEarnings,
             onDismiss = { showRecordDailyWorkDialog = false },
             onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end ->
                 viewModel.recordDailyWork(date, amount, trips, km, notes, start, lunchStart, lunchEnd, end)
+                showRecordDailyWorkDialog = false
             }
         )
     }
