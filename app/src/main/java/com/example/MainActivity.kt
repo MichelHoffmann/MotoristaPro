@@ -38,7 +38,9 @@ enum class AppScreen {
     EXPENSES,
     SETTINGS,
     VEHICLE,
-    NEW_USER
+    NEW_USER,
+    LOGIN,
+    SUPABASE_DATA
 }
 
 class MainActivity : ComponentActivity() {
@@ -79,6 +81,10 @@ fun MainAppScaffold(viewModel: MainViewModel) {
 
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
     val selectedExpenseTab by viewModel.selectedExpenseTab.collectAsStateWithLifecycle()
+
+    val authUser by viewModel.authUser.collectAsStateWithLifecycle()
+    val dadosList by viewModel.dados.collectAsStateWithLifecycle()
+    val supabaseSyncState by viewModel.supabaseSyncState.collectAsStateWithLifecycle()
 
     // Handle back button on sub-screens
     if (currentScreen != AppScreen.HOME) {
@@ -265,7 +271,10 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER },
                     onRecordStageAction = { viewModel.recordWorkStageAction(it) },
-                    onAdjustStagesClick = { showAdjustWorkStagesDialog = true }
+                    onAdjustStagesClick = { showAdjustWorkStagesDialog = true },
+                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN },
+                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
+                    authUser = authUser
                 )
                 AppScreen.PLANNING -> PlanningScreen(
                     currentYearMonth = currentYearMonth,
@@ -305,7 +314,10 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     vehicleProfile = vehicleProfile,
                     onOpenNewUserMenu = { currentScreen = AppScreen.NEW_USER },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
-                    onResetAllData = { viewModel.resetAllDataToZero() }
+                    onResetAllData = { viewModel.resetAllDataToZero() },
+                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
+                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN },
+                    authUser = authUser
                 )
                 AppScreen.VEHICLE -> VehicleSectionScreen(
                     vehicleProfile = vehicleProfile,
@@ -318,6 +330,39 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onAddFuelChargeRecord = { viewModel.addFuelChargeRecord(it) },
                     onDeleteFuelChargeRecord = { viewModel.deleteFuelChargeRecord(it) },
                     onNavigateBack = { currentScreen = AppScreen.HOME }
+                )
+                AppScreen.LOGIN -> LoginScreen(
+                    currentUser = authUser,
+                    onSignInWithGoogle = { activityContext, onResult ->
+                        viewModel.signInWithGoogle(activityContext, onResult)
+                    },
+                    onSimulatedGoogleLogin = { name, email ->
+                        viewModel.loginWithSimulatedGoogle(name, email)
+                    },
+                    onGuestLogin = { viewModel.loginAsGuest() },
+                    onLogout = { viewModel.logout() },
+                    onNavigateBack = { currentScreen = AppScreen.HOME },
+                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA }
+                )
+                AppScreen.SUPABASE_DATA -> SupabaseDataScreen(
+                    dadosList = dadosList,
+                    authUser = authUser,
+                    syncState = supabaseSyncState,
+                    supabaseClient = viewModel.supabaseClient,
+                    onSyncNow = { viewModel.syncSupabaseDados() },
+                    onInsertDado = { usuario, conteudo, onComplete ->
+                        viewModel.insertDado(usuario, conteudo, onComplete)
+                    },
+                    onDeleteDado = { viewModel.deleteDado(it) },
+                    onTestConnection = { onResult ->
+                        viewModel.testSupabaseConnection(onResult)
+                    },
+                    onSaveConfig = { url, key ->
+                        viewModel.saveSupabaseConfig(url, key)
+                    },
+                    onClearConfig = { viewModel.clearSupabaseConfig() },
+                    onNavigateBack = { currentScreen = AppScreen.HOME },
+                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN }
                 )
                 AppScreen.NEW_USER -> {
                     // Handled above before Scaffold
@@ -333,7 +378,9 @@ fun MainAppScaffold(viewModel: MainViewModel) {
             onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
             onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
             onNavigateToExpenses = { currentScreen = AppScreen.EXPENSES },
-            onNavigateToSettings = { currentScreen = AppScreen.SETTINGS }
+            onNavigateToSettings = { currentScreen = AppScreen.SETTINGS },
+            onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
+            onNavigateToLogin = { currentScreen = AppScreen.LOGIN }
         )
     }
 
@@ -342,7 +389,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     val targetRecordDate = recordDialogTargetDate ?: todayDateStr
     val targetEarningRecord = dailyEarnings.find { it.dateStr == targetRecordDate }
 
-    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados e etapas de trabalho)
+    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados, combustível/recarga e etapas)
     if (showRecordDailyWorkDialog) {
         RecordDailyWorkDialog(
             initialDate = targetRecordDate,
@@ -354,10 +401,12 @@ fun MainAppScaffold(viewModel: MainViewModel) {
             initialLunchStartTime = targetEarningRecord?.lunchStartTime.orEmpty(),
             initialLunchEndTime = targetEarningRecord?.lunchEndTime.orEmpty(),
             initialEndTime = targetEarningRecord?.endTime.orEmpty(),
+            initialFuelCost = targetEarningRecord?.fuelOrChargeCost ?: 0.0,
+            initialIsElectric = targetEarningRecord?.isElectricCharge ?: vehicleProfile.isElectric,
             existingEarnings = dailyEarnings,
             onDismiss = { showRecordDailyWorkDialog = false },
-            onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end ->
-                viewModel.recordDailyWork(date, amount, trips, km, notes, start, lunchStart, lunchEnd, end)
+            onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end, fuelCost, isElectric ->
+                viewModel.recordDailyWork(date, amount, trips, km, notes, start, lunchStart, lunchEnd, end, fuelCost, isElectric)
                 showRecordDailyWorkDialog = false
             }
         )

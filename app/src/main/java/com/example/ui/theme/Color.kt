@@ -20,6 +20,7 @@ val ExpenseRed = Color(0xFFEF4444)
 val ExpenseRedSoft = Color(0xFFF87171)
 val FuelOrange = Color(0xFFF59E0B)
 val FuelOrangeLight = Color(0xFFFBBF24)
+val GoldWarning = Color(0xFFF59E0B)
 val MetricBlue = Color(0xFF38BDF8)
 val MetricPurple = Color(0xFFA855F7)
 

@@ -93,4 +93,20 @@ interface AppDao {
 
     @Query("DELETE FROM vehicle_profile")
     suspend fun clearVehicleProfile()
+
+    // Tabela 'dados' do Supabase
+    @Query("SELECT * FROM dados ORDER BY id DESC")
+    fun getAllDados(): Flow<List<com.example.model.Dado>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDado(dado: com.example.model.Dado): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllDados(dados: List<com.example.model.Dado>)
+
+    @Delete
+    suspend fun deleteDado(dado: com.example.model.Dado)
+
+    @Query("DELETE FROM dados")
+    suspend fun clearAllDados()
 }

@@ -5,6 +5,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.AppRepository
+import com.example.data.AuthManager
+import com.example.data.SupabaseClient
+import com.example.model.AuthUser
+import com.example.model.Dado
 import com.example.model.DailyEarning
 import com.example.model.Expense
 import com.example.model.FuelChargeRecord
@@ -29,6 +33,12 @@ import java.util.Locale
 
 enum class PeriodFilter { DIARIO, SEMANAL, MENSAL, ANUAL }
 enum class ExpenseTabFilter { TODAS, CATEGORIAS, COMPROVANTES }
+
+data class SupabaseSyncState(
+    val isLoading: Boolean = false,
+    val isError: Boolean = false,
+    val message: String? = null
+)
 
 data class ChartBarPoint(
     val label: String,
@@ -56,13 +66,24 @@ enum class QuickWorkSchedule {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: AppRepository
+    private val database = AppDatabase.getInstance(application)
+    private val repository = AppRepository(database.appDao())
+    val supabaseClient = SupabaseClient(application)
+    val authManager = AuthManager(application)
+
+    val authUser: StateFlow<AuthUser> = authManager.currentUser
+    val dados: StateFlow<List<Dado>> = repository.dados
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _supabaseSyncState = MutableStateFlow(SupabaseSyncState())
+    val supabaseSyncState: StateFlow<SupabaseSyncState> = _supabaseSyncState.asStateFlow()
 
     init {
-        val database = AppDatabase.getInstance(application)
-        repository = AppRepository(database.appDao())
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
+            if (supabaseClient.isConfigured()) {
+                syncSupabaseDados()
+            }
         }
     }
 
@@ -150,7 +171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Register daily earnings, total trip count, km and work stages
+    // Register daily earnings, total trip count, km, work stages, and fuel/recharge
     fun recordDailyWork(
         date: String,
         totalAmount: Double,
@@ -160,7 +181,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         startTime: String = "",
         lunchStartTime: String = "",
         lunchEndTime: String = "",
-        endTime: String = ""
+        endTime: String = "",
+        fuelOrChargeCost: Double = 0.0,
+        isElectricCharge: Boolean = false
     ) {
         viewModelScope.launch {
             val effectiveDate = if (date.isBlank()) getTodayDateString() else date
@@ -178,6 +201,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lunchStartTime = if (lunchStartTime.isNotBlank()) lunchStartTime else existing.lunchStartTime,
                     lunchEndTime = if (lunchEndTime.isNotBlank()) lunchEndTime else existing.lunchEndTime,
                     endTime = if (endTime.isNotBlank()) endTime else existing.endTime,
+                    fuelOrChargeCost = if (fuelOrChargeCost > 0) fuelOrChargeCost else existing.fuelOrChargeCost,
+                    isElectricCharge = isElectricCharge,
                     timestamp = System.currentTimeMillis()
                 )
             } else {
@@ -190,11 +215,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     startTime = startTime,
                     lunchStartTime = lunchStartTime,
                     lunchEndTime = lunchEndTime,
-                    endTime = endTime
+                    endTime = endTime,
+                    fuelOrChargeCost = fuelOrChargeCost,
+                    isElectricCharge = isElectricCharge
                 )
             }
 
             repository.addDailyEarning(updated)
+
+            // If fuel/recharge was recorded, also log as FuelChargeRecord & Expense
+            if (fuelOrChargeCost > 0.0) {
+                val catName = if (isElectricCharge) "Recarga Elétrica" else "Combustível"
+                val desc = if (isElectricCharge) "Recarga do dia $effectiveDate" else "Abastecimento do dia $effectiveDate"
+                repository.addFuelChargeRecord(
+                    FuelChargeRecord(
+                        dateStr = effectiveDate,
+                        isElectricCharge = isElectricCharge,
+                        quantity = 0.0,
+                        unitPrice = 0.0,
+                        totalCost = fuelOrChargeCost,
+                        notes = desc
+                    )
+                )
+                repository.addExpense(
+                    Expense(
+                        category = catName,
+                        amount = fuelOrChargeCost,
+                        description = desc,
+                        dateStr = effectiveDate
+                    )
+                )
+            }
 
             // Update odometer if km is greater
             val currentProf = vehicleProfile.value
@@ -414,6 +465,142 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         }
+    }
+
+    // Supabase Operations for table 'dados' (colunas: id, usuario, conteudo)
+    fun syncSupabaseDados() {
+        viewModelScope.launch {
+            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Sincronizando com Supabase...")
+            val result = supabaseClient.fetchDados()
+            result.onSuccess { remoteDados ->
+                repository.replaceAllDados(remoteDados)
+                _supabaseSyncState.value = SupabaseSyncState(
+                    isLoading = false,
+                    isError = false,
+                    message = "Sincronizado! ${remoteDados.size} registro(s) obtidos."
+                )
+            }.onFailure { err ->
+                _supabaseSyncState.value = SupabaseSyncState(
+                    isLoading = false,
+                    isError = true,
+                    message = err.message ?: "Erro ao sincronizar com Supabase"
+                )
+            }
+        }
+    }
+
+    fun insertDado(usuario: String, conteudo: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Salvando registro...")
+            val userToSave = usuario.trim().ifBlank {
+                val current = authUser.value
+                if (current.isLoggedIn) current.name.ifBlank { current.email } else "Motorista"
+            }
+
+            val timestampStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+            if (supabaseClient.isConfigured()) {
+                val result = supabaseClient.insertDado(userToSave, conteudo)
+                result.onSuccess { remoteDado ->
+                    repository.addDado(remoteDado)
+                    _supabaseSyncState.value = SupabaseSyncState(
+                        isLoading = false,
+                        isError = false,
+                        message = "Registro salvo no Supabase com sucesso!"
+                    )
+                    onComplete?.invoke(true, null)
+                }.onFailure { err ->
+                    // Fallback local
+                    val local = Dado(
+                        id = System.currentTimeMillis(),
+                        usuario = userToSave,
+                        conteudo = conteudo,
+                        createdAt = timestampStr,
+                        isSyncedWithSupabase = false
+                    )
+                    repository.addDado(local)
+                    _supabaseSyncState.value = SupabaseSyncState(
+                        isLoading = false,
+                        isError = true,
+                        message = "Salvo localmente (Supabase indisponível: ${err.message})"
+                    )
+                    onComplete?.invoke(false, err.message)
+                }
+            } else {
+                val local = Dado(
+                    id = System.currentTimeMillis(),
+                    usuario = userToSave,
+                    conteudo = conteudo,
+                    createdAt = timestampStr,
+                    isSyncedWithSupabase = false
+                )
+                repository.addDado(local)
+                _supabaseSyncState.value = SupabaseSyncState(
+                    isLoading = false,
+                    isError = false,
+                    message = "Salvo na tabela dados local! Configure Supabase para nuvem."
+                )
+                onComplete?.invoke(true, null)
+            }
+        }
+    }
+
+    fun deleteDado(dado: Dado) {
+        viewModelScope.launch {
+            repository.deleteDado(dado)
+            if (supabaseClient.isConfigured() && dado.id > 0) {
+                supabaseClient.deleteDado(dado.id)
+            }
+        }
+    }
+
+    fun testSupabaseConnection(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Testando conexão com Supabase...")
+            val res = supabaseClient.testConnection()
+            res.onSuccess { msg ->
+                _supabaseSyncState.value = SupabaseSyncState(isLoading = false, isError = false, message = msg)
+                onResult(true, msg)
+            }.onFailure { err ->
+                val msg = err.message ?: "Falha ao conectar ao Supabase."
+                _supabaseSyncState.value = SupabaseSyncState(isLoading = false, isError = true, message = msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun saveSupabaseConfig(url: String, anonKey: String) {
+        supabaseClient.saveCustomConfig(url, anonKey)
+        syncSupabaseDados()
+    }
+
+    fun clearSupabaseConfig() {
+        supabaseClient.clearCustomConfig()
+        _supabaseSyncState.value = SupabaseSyncState(message = "Configuração do Supabase redefinida.")
+    }
+
+    // Google Sign-In & Authentication
+    fun signInWithGoogle(context: android.content.Context, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val res = authManager.signInWithGoogleCredentialManager(context)
+            res.onSuccess { user ->
+                onResult(true, null)
+            }.onFailure { err ->
+                onResult(false, err.message)
+            }
+        }
+    }
+
+    fun loginWithSimulatedGoogle(name: String, email: String, photoUrl: String = "") {
+        authManager.loginWithSimulatedGoogle(name, email, photoUrl)
+    }
+
+    fun loginAsGuest() {
+        authManager.loginAsGuest()
+    }
+
+    fun logout() {
+        authManager.logout()
     }
 
     fun resetAllDataToZero() {

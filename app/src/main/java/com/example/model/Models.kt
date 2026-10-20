@@ -17,7 +17,9 @@ data class DailyEarning(
     val lunchStartTime: String = "", // Etapa 2: Início da pausa/almoço (ex: "12:00")
     val lunchEndTime: String = "", // Etapa 3: Retorno do almoço (ex: "13:00")
     val endTime: String = "", // Etapa 4: Fim da jornada (ex: "17:30")
-    val workedMinutes: Int = 0 // Minutos totais trabalhados
+    val workedMinutes: Int = 0, // Minutos totais trabalhados
+    val fuelOrChargeCost: Double = 0.0, // Valor gasto com abastecimento ou recarga no dia
+    val isElectricCharge: Boolean = false // Tipo de abastecimento: Combustível ou Recarga Elétrica
 ) {
     val calculatedMinutes: Int
         get() {
@@ -211,4 +213,31 @@ data class VehicleProfile(
     val avgDailyHours: Double = 8.0, // Horas médias trabalhadas por dia
     val deadheadPercentage: Double = 25.0, // % de km sem passageiros (deslocamento/retorno)
     val safetyMarginPercentage: Double = 10.0 // % margem de segurança para imprevistos
+)
+
+/**
+ * Tabela 'dados' do Supabase conforme solicitado pelo usuário:
+ * Colunas: id, usuário, conteúdo
+ */
+@Entity(tableName = "dados")
+data class Dado(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val usuario: String,
+    val conteudo: String,
+    val createdAt: String = "",
+    val isSyncedWithSupabase: Boolean = true
+)
+
+/**
+ * Usuário autenticado via Google Sign-in / Supabase Auth
+ */
+data class AuthUser(
+    val id: String = "",
+    val name: String = "",
+    val email: String = "",
+    val photoUrl: String = "",
+    val idToken: String = "",
+    val isLoggedIn: Boolean = false,
+    val isGuest: Boolean = false
 )

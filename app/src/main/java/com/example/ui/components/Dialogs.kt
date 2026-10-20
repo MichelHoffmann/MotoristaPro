@@ -37,6 +37,8 @@ fun RecordDailyWorkDialog(
     initialLunchStartTime: String = "",
     initialLunchEndTime: String = "",
     initialEndTime: String = "",
+    initialFuelCost: Double = 0.0,
+    initialIsElectric: Boolean = false,
     existingEarnings: List<DailyEarning> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
@@ -48,7 +50,9 @@ fun RecordDailyWorkDialog(
         startTime: String,
         lunchStartTime: String,
         lunchEndTime: String,
-        endTime: String
+        endTime: String,
+        fuelOrChargeCost: Double,
+        isElectricCharge: Boolean
     ) -> Unit
 ) {
     val todayDateStr = remember { MainViewModel.getTodayDateString() }
@@ -71,6 +75,11 @@ fun RecordDailyWorkDialog(
     var kmDrivenText by remember { mutableStateOf(if (initialKm > 0) String.format(java.util.Locale.US, "%.1f", initialKm) else "") }
     var notesText by remember { mutableStateOf(initialNotes) }
 
+    // Abastecimento ou Recarga
+    var didFuelOrCharge by remember { mutableStateOf(initialFuelCost > 0) }
+    var isElectricCharge by remember { mutableStateOf(initialIsElectric) }
+    var fuelCostText by remember { mutableStateOf(if (initialFuelCost > 0) String.format(java.util.Locale.US, "%.2f", initialFuelCost) else "") }
+
     // Etapas da Jornada de Trabalho
     var startTimeText by remember { mutableStateOf(initialStartTime) }
     var lunchStartTimeText by remember { mutableStateOf(initialLunchStartTime) }
@@ -89,6 +98,9 @@ fun RecordDailyWorkDialog(
             lunchStartTimeText = found.lunchStartTime
             lunchEndTimeText = found.lunchEndTime
             endTimeText = found.endTime
+            didFuelOrCharge = found.fuelOrChargeCost > 0
+            isElectricCharge = found.isElectricCharge
+            fuelCostText = if (found.fuelOrChargeCost > 0) String.format(java.util.Locale.US, "%.2f", found.fuelOrChargeCost) else ""
         } else if (targetDate != initialDate) {
             amountText = ""
             tripsCountText = ""
@@ -98,6 +110,8 @@ fun RecordDailyWorkDialog(
             lunchStartTimeText = ""
             lunchEndTimeText = ""
             endTimeText = ""
+            didFuelOrCharge = false
+            fuelCostText = ""
         }
     }
 
@@ -415,11 +429,116 @@ fun RecordDailyWorkDialog(
                     )
                 )
 
+                // Section: Abasteceu ou recarregou o carro no dia?
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isElectricCharge) Icons.Default.ElectricCar else Icons.Default.LocalGasStation,
+                                    contentDescription = null,
+                                    tint = if (didFuelOrCharge) FuelOrange else TextSecondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "Abasteceu ou recarregou?",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextWhite
+                                    )
+                                    Text(
+                                        text = if (didFuelOrCharge) "Registrar gasto com energia/combustível" else "Marque se gastou com o carro hoje",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = didFuelOrCharge,
+                                onCheckedChange = { didFuelOrCharge = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = FuelOrange
+                                )
+                            )
+                        }
+
+                        if (didFuelOrCharge) {
+                            HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+
+                            // Toggle: Combustível Líquido vs Recarga Elétrica
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = !isElectricCharge,
+                                    onClick = { isElectricCharge = false },
+                                    label = { Text("Combustível (Gasolina/Etanol)", fontSize = 11.sp) },
+                                    leadingIcon = { Icon(Icons.Default.LocalGasStation, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = FuelOrange,
+                                        selectedLabelColor = Color.White,
+                                        selectedLeadingIconColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = isElectricCharge,
+                                    onClick = { isElectricCharge = true },
+                                    label = { Text("Recarga Elétrica", fontSize = 11.sp) },
+                                    leadingIcon = { Icon(Icons.Default.ElectricBolt, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = EmeraldGreen,
+                                        selectedLabelColor = Color.White,
+                                        selectedLeadingIconColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = fuelCostText,
+                                onValueChange = { fuelCostText = it },
+                                label = { Text(if (isElectricCharge) "Valor gasto na recarga (R$)" else "Valor gasto com combustível (R$)") },
+                                placeholder = { Text("Ex: 120.00") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("input_daily_fuel_cost"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = FuelOrange,
+                                    unfocusedBorderColor = BorderDark,
+                                    focusedTextColor = TextWhite,
+                                    unfocusedTextColor = TextWhite,
+                                    focusedContainerColor = CardDark,
+                                    unfocusedContainerColor = CardDark
+                                )
+                            )
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
                         val amt = amountText.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val trips = tripsCountText.toIntOrNull() ?: 0
                         val km = kmDrivenText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        val fuelCost = if (didFuelOrCharge) fuelCostText.replace(",", ".").toDoubleOrNull() ?: 0.0 else 0.0
                         onConfirm(
                             dateText,
                             amt,
@@ -429,7 +548,9 @@ fun RecordDailyWorkDialog(
                             startTimeText,
                             lunchStartTimeText,
                             lunchEndTimeText,
-                            endTimeText
+                            endTimeText,
+                            fuelCost,
+                            isElectricCharge
                         )
                         onDismiss()
                     },

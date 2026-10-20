@@ -27,7 +27,9 @@ fun MoreSheet(
     onNavigateToVehicle: () -> Unit,
     onNavigateToPlanning: () -> Unit,
     onNavigateToExpenses: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToSupabase: () -> Unit = {},
+    onNavigateToLogin: () -> Unit = {}
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -47,7 +49,7 @@ fun MoreSheet(
                 color = TextWhite
             )
 
-            // Section 1: Meu Veículo & Viabilidade R$/km
+            // Section 1: Meu Veículo & Planejamento
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -79,6 +81,39 @@ fun MoreSheet(
                 )
             }
 
+            // Section 2: Supabase (Tabela dados) & Login Google
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MoreSheetCard(
+                    title = "Supabase",
+                    subtitle = "Tabela dados (Anon Key)",
+                    icon = Icons.Outlined.CloudSync,
+                    iconBg = EmeraldGreen.copy(alpha = 0.2f),
+                    iconTint = EmeraldGreen,
+                    onClick = {
+                        onDismiss()
+                        onNavigateToSupabase()
+                    },
+                    modifier = Modifier.weight(1f).testTag("more_supabase_card")
+                )
+
+                MoreSheetCard(
+                    title = "Conta Google",
+                    subtitle = "Login e autenticação",
+                    icon = Icons.Outlined.AccountCircle,
+                    iconBg = MetricBlue.copy(alpha = 0.2f),
+                    iconTint = MetricBlue,
+                    onClick = {
+                        onDismiss()
+                        onNavigateToLogin()
+                    },
+                    modifier = Modifier.weight(1f).testTag("more_login_card")
+                )
+            }
+
+            // Section 3: Configurações
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)

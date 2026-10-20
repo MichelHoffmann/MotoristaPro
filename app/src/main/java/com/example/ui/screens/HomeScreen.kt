@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,9 @@ fun HomeScreen(
     onRecordStageAction: (stage: String) -> Unit = {},
     onAdjustStagesClick: () -> Unit = {},
     onAddPastDailyWorkClick: () -> Unit = onAddDailyWorkClick,
+    onNavigateToLogin: () -> Unit = {},
+    onNavigateToSupabase: () -> Unit = {},
+    authUser: com.example.model.AuthUser? = null,
     modifier: Modifier = Modifier
 ) {
     val todayDateStr = MainViewModel.getTodayDateString()
@@ -147,22 +151,6 @@ fun HomeScreen(
         kotlin.math.ceil(remainingGrossForToday / effectiveMinRatePerKm)
     } else 0.0
 
-    // Daily Work Stages variables
-    val todayStartTime = todayEarningRecord?.startTime.orEmpty()
-    val todayLunchStartTime = todayEarningRecord?.lunchStartTime.orEmpty()
-    val todayLunchEndTime = todayEarningRecord?.lunchEndTime.orEmpty()
-    val todayEndTime = todayEarningRecord?.endTime.orEmpty()
-    val todayWorkedMinutes = todayEarningRecord?.calculatedMinutes ?: 0
-    val todayWorkedHours = todayEarningRecord?.calculatedHours ?: 0.0
-    val todayFormattedTime = todayEarningRecord?.formattedWorkedTime ?: "0h"
-    val todayHourlyRate = if (todayWorkedHours > 0 && todayEarnings > 0) todayEarnings / todayWorkedHours else 0.0
-
-    val isJourneyCompleted = todayEndTime.isNotBlank()
-    val isInSecondShift = todayLunchEndTime.isNotBlank() && todayEndTime.isBlank()
-    val isInLunchBreak = todayLunchStartTime.isNotBlank() && todayLunchEndTime.isBlank()
-    val isInFirstShift = todayStartTime.isNotBlank() && todayLunchStartTime.isBlank() && todayEndTime.isBlank()
-    val isJourneyNotStarted = todayStartTime.isBlank()
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -230,21 +218,44 @@ fun HomeScreen(
                     )
                 }
 
-                // Profile button
+                // Supabase Shortcut
                 Box(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(CardDark)
-                        .clickable { onOpenProfileMenu() }
-                        .testTag("btn_open_profile_menu"),
+                        .clickable { onNavigateToSupabase() }
+                        .testTag("btn_supabase_shortcut"),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Person,
-                        contentDescription = "Menu do Usuário e Veículo",
-                        tint = TextWhite,
+                        imageVector = Icons.Outlined.CloudSync,
+                        contentDescription = "Supabase (Tabela dados)",
+                        tint = EmeraldGreen,
                         modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Profile / Google Login button
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (authUser?.isLoggedIn == true) EmeraldGreen.copy(alpha = 0.2f) else CardDark)
+                        .border(
+                            width = if (authUser?.isLoggedIn == true) 1.5.dp else 0.dp,
+                            color = if (authUser?.isLoggedIn == true) EmeraldGreen else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onNavigateToLogin() }
+                        .testTag("btn_open_login_menu"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (authUser?.isLoggedIn == true) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
+                        contentDescription = "Conta e Login Google",
+                        tint = if (authUser?.isLoggedIn == true) EmeraldGreen else TextWhite,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -282,17 +293,13 @@ fun HomeScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (todayStartTime.isNotBlank()) "Jornada em andamento (${todayFormattedTime})" else "Informações do dia ainda não preenchidas",
+                            text = "Informações do dia ainda não preenchidas",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextWhite
                         )
                         Text(
-                            text = if (todayStartTime.isNotBlank()) {
-                                "Início às $todayStartTime. Toque para lançar ganhos, km e corridas. Estimativa para a meta: ~${estimatedKmToReachDailyGoal.toInt()} km."
-                            } else {
-                                "Ganhos, km rodados e quantidade de corridas de hoje ainda não foram lançados. Estimativa para a meta: ~${estimatedKmToReachDailyGoal.toInt()} km."
-                            },
+                            text = "Toque aqui para lançar faturamento, km rodados, abastecimento/recarga e corridas. Estimativa para meta: ~${estimatedKmToReachDailyGoal.toInt()} km.",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -621,274 +628,6 @@ fun HomeScreen(
             }
         }
 
-        // Card: Etapas da Jornada de Trabalho (Cálculo de Horas Trabalhadas)
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = CardDark),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("card_work_stages")
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Header with title and "Ajustar" button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(EmeraldGreen.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Schedule,
-                                contentDescription = null,
-                                tint = EmeraldGreen,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Etapas da Jornada de Trabalho",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextWhite
-                            )
-                            Text(
-                                text = when {
-                                    isJourneyCompleted -> "Jornada do dia finalizada"
-                                    isInSecondShift -> "2º Turno em andamento"
-                                    isInLunchBreak -> "Em pausa para almoço"
-                                    isInFirstShift -> "1º Turno em andamento"
-                                    else -> "Aguardando início do dia"
-                                },
-                                fontSize = 11.sp,
-                                color = if (isInLunchBreak) FuelOrange else if (isJourneyCompleted) ProfitGreen else EmeraldGreen,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onAdjustStagesClick,
-                        modifier = Modifier.testTag("btn_adjust_stages"),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.5f))
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Ajustar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                // Summary Row: Horas Trabalhadas & Média R$/h
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceDark)
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Tempo trabalhado hoje", fontSize = 11.sp, color = TextSecondary)
-                        Text(
-                            text = todayFormattedTime,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (todayWorkedMinutes > 0) EmeraldGreen else TextSecondary
-                        )
-                    }
-
-                    if (todayHourlyRate > 0) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Ganho por hora real", fontSize = 11.sp, color = TextSecondary)
-                            Text(
-                                text = String.format(java.util.Locale.US, "R$ %.2f/h", todayHourlyRate).replace(".", ","),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ProfitGreen
-                            )
-                        }
-                    } else {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Piso recomendado", fontSize = 11.sp, color = TextSecondary)
-                            Text(
-                                text = String.format(java.util.Locale.US, "R$ %.2f/h", viabilityResult.recommendedMinRatePerHour).replace(".", ","),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                }
-
-                // Visual Stepper of 4 stages: Início, Pausa, Retorno, Fim
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    WorkStageChip(
-                        stageNumber = "1",
-                        label = "Início",
-                        timeStr = todayStartTime,
-                        isActive = isInFirstShift,
-                        isDone = todayStartTime.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("→", color = TextSecondary, fontSize = 11.sp)
-                    WorkStageChip(
-                        stageNumber = "2",
-                        label = "Pausa",
-                        timeStr = todayLunchStartTime,
-                        isActive = isInLunchBreak,
-                        isDone = todayLunchStartTime.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("→", color = TextSecondary, fontSize = 11.sp)
-                    WorkStageChip(
-                        stageNumber = "3",
-                        label = "Retorno",
-                        timeStr = todayLunchEndTime,
-                        isActive = isInSecondShift,
-                        isDone = todayLunchEndTime.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("→", color = TextSecondary, fontSize = 11.sp)
-                    WorkStageChip(
-                        stageNumber = "4",
-                        label = "Fim",
-                        timeStr = todayEndTime,
-                        isActive = false,
-                        isDone = todayEndTime.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                // Interactive Quick-Action Buttons (advances stages with current time)
-                when {
-                    isJourneyNotStarted -> {
-                        Button(
-                            onClick = { onRecordStageAction("START") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("btn_action_start_day"),
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Iniciar Dia de Trabalho", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-                    isInFirstShift -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = { onRecordStageAction("LUNCH_START") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
-                                    .testTag("btn_action_lunch_start"),
-                                colors = ButtonDefaults.buttonColors(containerColor = FuelOrange),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Pausa Almoço", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = { onRecordStageAction("END") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
-                                    .testTag("btn_action_end_day_direct"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ExpenseRedSoft),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, ExpenseRedSoft)
-                            ) {
-                                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Fim da Jornada", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            }
-                        }
-                    }
-                    isInLunchBreak -> {
-                        Button(
-                            onClick = { onRecordStageAction("LUNCH_END") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("btn_action_lunch_end"),
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Retorno do Almoço", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-                    isInSecondShift -> {
-                        Button(
-                            onClick = { onRecordStageAction("END") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("btn_action_end_day"),
-                            colors = ButtonDefaults.buttonColors(containerColor = ExpenseRedSoft),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Fim da Jornada", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                        }
-                    }
-                    isJourneyCompleted -> {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = EmeraldGreen.copy(alpha = 0.15f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = "Jornada de hoje finalizada com sucesso ($todayFormattedTime trabalhadas).",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = EmeraldGreen
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Vehicle Viability Card: Quanto devo aceitar por km e por hora
         Card(
             shape = RoundedCornerShape(18.dp),
@@ -997,45 +736,5 @@ fun HomeScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun WorkStageChip(
-    stageNumber: String,
-    label: String,
-    timeStr: String,
-    isActive: Boolean,
-    isDone: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = when {
-            isActive -> EmeraldGreen.copy(alpha = 0.25f)
-            isDone -> SurfaceDark
-            else -> BackgroundDark
-        },
-        border = if (isActive) androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen) else null,
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "$stageNumber. $label",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isActive || isDone) EmeraldGreen else TextSecondary,
-                maxLines = 1
-            )
-            Text(
-                text = if (timeStr.isNotBlank()) timeStr else "--:--",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDone) TextWhite else TextSecondary
-            )
-        }
     }
 }

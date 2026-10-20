@@ -17,10 +17,20 @@ class AppRepository(private val dao: AppDao) {
     val vehicleProfile: Flow<VehicleProfile?> = dao.getVehicleProfile()
     val vehicleCostItems: Flow<List<VehicleCostItem>> = dao.getAllVehicleCostItems()
     val fuelChargeRecords: Flow<List<FuelChargeRecord>> = dao.getAllFuelChargeRecords()
+    val dados: Flow<List<com.example.model.Dado>> = dao.getAllDados()
 
     suspend fun addDailyEarning(earning: DailyEarning) = dao.insertDailyEarning(earning)
     suspend fun deleteDailyEarning(earning: DailyEarning) = dao.deleteDailyEarning(earning)
     suspend fun getDailyEarningByDate(dateStr: String): DailyEarning? = dao.getDailyEarningByDate(dateStr)
+
+    // Tabela dados
+    suspend fun addDado(dado: com.example.model.Dado) = dao.insertDado(dado)
+    suspend fun deleteDado(dado: com.example.model.Dado) = dao.deleteDado(dado)
+    suspend fun clearDados() = dao.clearAllDados()
+    suspend fun replaceAllDados(list: List<com.example.model.Dado>) {
+        dao.clearAllDados()
+        dao.insertAllDados(list)
+    }
 
     suspend fun toggleWorkDay(dateStr: String) {
         val currentDays = workDays.firstOrNull() ?: emptyList()
@@ -50,6 +60,39 @@ class AppRepository(private val dao: AppDao) {
     // Fuel and Energy records
     suspend fun addFuelChargeRecord(record: FuelChargeRecord) = dao.insertFuelChargeRecord(record)
     suspend fun deleteFuelChargeRecord(record: FuelChargeRecord) = dao.deleteFuelChargeRecord(record)
+
+    suspend fun updateFuelExpenseForDate(dateStr: String, fuelCost: Double, isElectric: Boolean) {
+        val currentExpenses = expenses.firstOrNull() ?: emptyList()
+        currentExpenses.filter {
+            it.dateStr == dateStr && (it.description.startsWith("Abastecimento do dia") || it.description.startsWith("Recarga do dia") || it.category == "Combustível" || it.category == "Recarga Elétrica")
+        }.forEach { dao.deleteExpense(it) }
+
+        val currentFuelRecords = fuelChargeRecords.firstOrNull() ?: emptyList()
+        currentFuelRecords.filter { it.dateStr == dateStr }.forEach { dao.deleteFuelChargeRecord(it) }
+
+        if (fuelCost > 0.0) {
+            val catName = if (isElectric) "Recarga Elétrica" else "Combustível"
+            val desc = if (isElectric) "Recarga do dia $dateStr" else "Abastecimento do dia $dateStr"
+            dao.insertFuelChargeRecord(
+                FuelChargeRecord(
+                    dateStr = dateStr,
+                    isElectricCharge = isElectric,
+                    quantity = 0.0,
+                    unitPrice = 0.0,
+                    totalCost = fuelCost,
+                    notes = desc
+                )
+            )
+            dao.insertExpense(
+                Expense(
+                    category = catName,
+                    amount = fuelCost,
+                    description = desc,
+                    dateStr = dateStr
+                )
+            )
+        }
+    }
 
     suspend fun updateVehicleProfile(profile: VehicleProfile) = dao.saveVehicleProfile(profile)
 
