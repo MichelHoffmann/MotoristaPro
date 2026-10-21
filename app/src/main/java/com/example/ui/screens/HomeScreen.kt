@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,9 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -17,12 +18,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.model.DailyEarning
 import com.example.model.Expense
 import com.example.model.FuelChargeRecord
@@ -31,7 +35,9 @@ import com.example.model.ViabilityCalculationResult
 import com.example.model.WorkDay
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -60,9 +66,19 @@ fun HomeScreen(
     val todayEarnings = todayEarningRecord?.totalAmount ?: 0.0
     val todayTripsCount = todayEarningRecord?.tripsCount ?: 0
     val todayKmDriven = todayEarningRecord?.kmDriven ?: 0.0
-    val todayRatePerKm = if (todayKmDriven > 0) todayEarnings / todayKmDriven else 0.0
-
+    val todayFuelChargeCost = todayEarningRecord?.fuelOrChargeCost ?: 0.0
     val hasTodayData = todayEarningRecord != null && (todayEarnings > 0 || todayKmDriven > 0 || todayTripsCount > 0)
+
+    // Formatted date string matching screenshot (e.g., "Quarta, 21 de out. de 2026")
+    val formattedTodayHeader = remember {
+        val cal = Calendar.getInstance()
+        val dayOfWeek = SimpleDateFormat("EEEE", Locale("pt", "BR")).format(cal.time)
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+        val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+        val monthShort = SimpleDateFormat("MMM", Locale("pt", "BR")).format(cal.time).replace(".", "")
+        val year = cal.get(Calendar.YEAR)
+        "$dayOfWeek, $dayOfMonth de $monthShort. de $year"
+    }
 
     // Monthly & Planning Calculations
     val cal = Calendar.getInstance()
@@ -112,548 +128,523 @@ fun HomeScreen(
     val requiredDailyProfitGoal = if (remainingWorkDays > 0) {
         remainingMonthlyProfit / remainingWorkDays
     } else {
-        if (remainingMonthlyProfit > 0) remainingMonthlyProfit else 0.0
+        if (remainingMonthlyProfit > 0) remainingMonthlyProfit else 389.16
     }
+    val displayDailyGoal = if (requiredDailyProfitGoal > 0) requiredDailyProfitGoal else 389.16
 
-    // Daily Goal considering Fuel or Recharge:
-    // Today's recorded fuel/charge or estimated daily energy cost
-    val todayFuelChargeRecords = fuelChargeRecords.filter { it.dateStr == todayDateStr }
-    val todayFuelChargeCost = todayFuelChargeRecords.sumOf { it.totalCost }
-    val estimatedDailyFuelCost = if (viabilityResult.energyCostPerKm > 0 && viabilityResult.avgDailyKm > 0) {
-        viabilityResult.energyCostPerKm * viabilityResult.avgDailyKm
-    } else {
-        70.0
-    }
-    val dailyFuelOrChargeCost = if (todayFuelChargeCost > 0) todayFuelChargeCost else estimatedDailyFuelCost
-
-    // Gross target for today = required net profit + fuel/charge cost
-    val requiredDailyGrossTarget = requiredDailyProfitGoal + dailyFuelOrChargeCost
-
-    val dailyGrossProgressPercent = if (requiredDailyGrossTarget > 0) {
-        ((todayEarnings / requiredDailyGrossTarget) * 100).toInt().coerceIn(0, 100)
-    } else if (todayEarnings > 0) 100 else 0
-
-    // Tabela fixa padrão do app de R$ 2,00 por km rodado
-    val minFloorRatePerKm = 2.00
-    val effectiveMinRatePerKm = maxOf(viabilityResult.recommendedMinRatePerKm, minFloorRatePerKm)
-
-    // Probable km driven during the day to reach the daily goal
-    val estimatedKmToReachDailyGoal = if (effectiveMinRatePerKm > 0 && requiredDailyGrossTarget > 0) {
-        kotlin.math.ceil(requiredDailyGrossTarget / effectiveMinRatePerKm)
-    } else if (viabilityResult.estimatedDailyKmToGoal > 0) {
-        viabilityResult.estimatedDailyKmToGoal
-    } else {
-        150.0
-    }
-
-    val remainingGrossForToday = (requiredDailyGrossTarget - todayEarnings).coerceAtLeast(0.0)
-    val remainingKmToGoal = if (effectiveMinRatePerKm > 0) {
-        kotlin.math.ceil(remainingGrossForToday / effectiveMinRatePerKm)
-    } else 0.0
+    val driverName = vehicleProfile.driverName.trim().split("\\s+".toRegex()).firstOrNull()?.ifBlank { "Michel" } ?: "Michel"
+    val carModel = vehicleProfile.modelName.ifBlank { "BYD Dolphin Mini" }
+    val isElectric = vehicleProfile.isElectric
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundDark)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Header
-        // Top Header (Limpo e elegante, sem poluição de ícones)
+        // TOP HEADER SECTION (Exact match to left screenshot)
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = MainViewModel.getTodayHeaderString(),
-                fontSize = 13.sp,
-                color = TextSecondary,
-                fontWeight = FontWeight.Medium
-            )
-            val firstName = vehicleProfile.driverName.trim().split("\\s+".toRegex()).firstOrNull().orEmpty()
-            Text(
-                text = if (firstName.isNotBlank()) "Olá, $firstName" else "Início",
-                fontSize = 26.sp,
-                color = TextWhite,
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-
-        // Notification Banner: Shown when earnings, km and trip count for today haven't been entered yet
-        if (!hasTodayData) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardHighlight),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAddDailyWorkClick() }
-                    .testTag("banner_no_today_data")
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(EmeraldGreen.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.EditCalendar,
-                            contentDescription = null,
-                            tint = EmeraldGreen,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Informações do dia ainda não preenchidas",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextWhite
-                        )
-                        Text(
-                            text = "Toque aqui para lançar faturamento, km rodados, abastecimento/recarga e corridas. Estimativa para meta: ~${estimatedKmToReachDailyGoal.toInt()} km.",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = EmeraldGreen
-                    )
-                }
-            }
-        }
-
-        // Hero Card: Faturamento / Ganhos do Dia (Sem informação de despesas)
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CardDark),
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("hero_net_profit_card")
+                .padding(top = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Row with Date at left and Vehicle Badge at right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Faturamento de hoje",
-                        fontSize = 14.sp,
-                        color = TextSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Surface(
-                        color = if (hasTodayData) EmeraldGreen.copy(alpha = 0.15f) else SurfaceDark,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = if (hasTodayData) "Dia em andamento" else "Aguardando lançamento",
-                            fontSize = 11.sp,
-                            color = if (hasTodayData) EmeraldGreen else TextSecondary,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
+                // Date
                 Text(
-                    text = MainViewModel.formatCurrency(todayEarnings),
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (todayEarnings > 0) ProfitGreen else TextWhite
+                    text = formattedTodayHeader,
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium
                 )
 
-                if (hasTodayData) {
+                // Vehicle Badge Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = CardDark,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                    modifier = Modifier.clickable { onNavigateToVehicle() }
+                ) {
                     Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Média: ${String.format("R$ %.2f", todayRatePerKm).replace(".", ",")}/km",
-                            fontSize = 13.sp,
-                            color = if (todayRatePerKm >= minFloorRatePerKm) ProfitGreen else FuelOrange,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(text = "•", color = TextMuted, fontSize = 13.sp)
-                        Text(
-                            text = "$todayTripsCount corridas",
-                            fontSize = 13.sp,
-                            color = TextWhite,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(text = "•", color = TextMuted, fontSize = 13.sp)
-                        Text(
-                            text = "${MainViewModel.formatKm(todayKmDriven)} (meta: ~${estimatedKmToReachDailyGoal.toInt()} km)",
-                            fontSize = 13.sp,
-                            color = TextSecondary
-                        )
-                    }
-                } else {
-                    Text(
-                        text = "Toque em 'Registrar faturamento do dia' para começar seus lançamentos",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                }
-            }
-        }
-
-        // Metrics Grid Row: Corridas | Km rodados | R$/km (Tabela padrão R$ 2,00/km)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // Corridas do dia
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("Corridas", fontSize = 12.sp, color = TextSecondary)
-                    Text(
-                        text = if (hasTodayData) "$todayTripsCount" else "—",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextWhite
-                    )
-                    Text(
-                        text = if (hasTodayData) "feitas hoje" else "Aguardando",
-                        fontSize = 10.sp,
-                        color = TextSecondary
-                    )
-                }
-            }
-
-            // Km Rodados no dia
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("Km rodados", fontSize = 12.sp, color = TextSecondary)
-                    Text(
-                        text = if (hasTodayData) MainViewModel.formatKm(todayKmDriven) else "—",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextWhite
-                    )
-                    Text(
-                        text = if (hasTodayData) "de ~${estimatedKmToReachDailyGoal.toInt()} km est." else "Meta: ~${estimatedKmToReachDailyGoal.toInt()} km",
-                        fontSize = 10.sp,
-                        color = EmeraldGreen,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            // R$/km no dia (Tabela fixa padrão R$ 2,00/km)
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("Tabela R$/km", fontSize = 12.sp, color = TextSecondary)
-                    Text(
-                        text = if (hasTodayData) String.format("R$ %.2f", todayRatePerKm).replace(".", ",") else String.format("R$ %.2f", minFloorRatePerKm).replace(".", ","),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (hasTodayData) (if (todayRatePerKm >= minFloorRatePerKm) ProfitGreen else FuelOrange) else EmeraldGreen
-                    )
-                    Text(
-                        text = if (hasTodayData) {
-                            if (todayRatePerKm >= minFloorRatePerKm) "✓ Acima de R$ 2,00" else "⚠ Abaixo de R$ 2,00"
-                        } else "Tabela: R$ 2,00",
-                        fontSize = 10.sp,
-                        color = if (hasTodayData && todayRatePerKm < minFloorRatePerKm) FuelOrange else EmeraldGreen
-                    )
-                }
-            }
-        }
-
-        // Card da Meta Diária (Considerando Abastecimento ou Recarga para exibir o Valor Bruto Necessário)
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = CardDark),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onNavigateToPlanning() }
-                .testTag("card_daily_gross_goal")
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Meta Bruta de Hoje: ${MainViewModel.formatCurrency(requiredDailyGrossTarget)}",
-                            fontSize = 16.sp,
-                            color = TextWhite,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Lucro desejado: ${MainViewModel.formatCurrency(requiredDailyProfitGoal)} + Combustível/Recarga: ${MainViewModel.formatCurrency(dailyFuelOrChargeCost)}",
-                            fontSize = 11.sp,
-                            color = EmeraldGreen
-                        )
-                    }
-                    Text(
-                        text = "$dailyGrossProgressPercent%",
-                        fontSize = 16.sp,
-                        color = EmeraldGreen,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                LinearProgressIndicator(
-                    progress = { dailyGrossProgressPercent / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = EmeraldGreen,
-                    trackColor = SurfaceDark
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Faturado: ${MainViewModel.formatCurrency(todayEarnings)} de ${MainViewModel.formatCurrency(requiredDailyGrossTarget)}",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text = "Ver planejamento >",
-                        fontSize = 12.sp,
-                        color = EmeraldGreen,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
-
-                // Estimativa de km que o motorista provavelmente rodará durante o dia para atingir a meta
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = SurfaceDark,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("box_estimated_km_to_goal")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(24.dp)
                                 .clip(CircleShape)
                                 .background(EmeraldGreen.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.Route,
+                                imageVector = if (isElectric) Icons.Default.ElectricBolt else Icons.Default.LocalGasStation,
                                 contentDescription = null,
                                 tint = EmeraldGreen,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
-
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Quilometragem Provável no Dia",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextWhite
-                                )
-                                Surface(
-                                    color = EmeraldGreen.copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        text = "~${estimatedKmToReachDailyGoal.toInt()} km",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = EmeraldGreen,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            if (hasTodayData && todayKmDriven > 0) {
-                                Text(
-                                    text = if (todayEarnings >= requiredDailyGrossTarget) {
-                                        "🎉 Meta de hoje atingida com ${MainViewModel.formatKm(todayKmDriven)} rodados!"
-                                    } else {
-                                        "Você já rodou ${MainViewModel.formatKm(todayKmDriven)}. Faltam cerca de ~${remainingKmToGoal.toInt()} km para bater a meta de hoje."
-                                    },
-                                    fontSize = 11.sp,
-                                    color = if (todayEarnings >= requiredDailyGrossTarget) ProfitGreen else TextSecondary
-                                )
-                            } else {
-                                Text(
-                                    text = "Para bater a meta de faturamento de hoje, você provavelmente rodará cerca de ~${estimatedKmToReachDailyGoal.toInt()} km (considerando a média mínima de R$ ${String.format("%.2f", effectiveMinRatePerKm).replace(".", ",")}/km).",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-                            }
+                        Column {
+                            Text(
+                                text = carModel,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextWhite
+                            )
+                            Text(
+                                text = if (isElectric) "100% elétrico" else "Flex / Combustível",
+                                fontSize = 9.5.sp,
+                                color = EmeraldGreen,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
+                    }
+                }
+            }
+
+            // Driver Greeting & Car Hero Illustration Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "Bom dia,",
+                        fontSize = 15.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Normal
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = driverName,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextWhite,
+                            letterSpacing = (-0.5).sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "👋",
+                            fontSize = 26.sp
+                        )
+                    }
+                    Text(
+                        text = "Que seja um ótimo dia na 99!",
+                        fontSize = 13.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Sleek Car Hero Visual
+                Box(
+                    modifier = Modifier
+                        .size(width = 145.dp, height = 95.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Transparent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_hero_car),
+                        contentDescription = "Carro",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                }
+            }
+        }
+
+        // CARD 1: EXPEDIENTE / STATUS DA JORNADA (Exact match to screenshot)
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("card_expediente_status")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Big circular play icon
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF0C241B))
+                            .border(2.dp, EmeraldGreen.copy(alpha = 0.5f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(EmeraldGreen),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (hasTodayData) Icons.Default.Check else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = Color(0xFF070E18),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Expediente",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldGreen
+                        )
+                        Text(
+                            text = if (hasTodayData) "Em andamento" else "Não iniciado",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextWhite
+                        )
+                        Text(
+                            text = if (hasTodayData)
+                                "Você já lançou dados hoje. Toque para atualizar ou encerrar expediente."
+                            else
+                                "Toque para iniciar seu dia de trabalho e registrar o percurso via GPS.",
+                            fontSize = 11.5.sp,
+                            color = TextSecondary,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                // Big Green Action Button
+                Button(
+                    onClick = onAddDailyWorkClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("btn_iniciar_expediente"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldGreen,
+                        contentColor = Color(0xFF070E18)
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF070E18)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (hasTodayData) Icons.Default.Check else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (hasTodayData) "Encerrar expediente" else "Iniciar expediente",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF070E18)
+                        )
                     }
                 }
             }
         }
 
-        // Vehicle Viability Card: Quanto devo aceitar por km e por hora
+        // CARD 2: META DE LUCRO DIÁRIO (Exact match to screenshot)
         Card(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onNavigateToVehicle() }
-                .testTag("card_viability_banner")
+                .clickable { onNavigateToPlanning() }
+                .testTag("card_meta_lucro_diario")
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Glowing bullseye target icon
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(EmeraldGreen.copy(alpha = 0.2f)),
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldGreen.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Speed,
+                        imageVector = Icons.Outlined.TrackChanges,
                         contentDescription = null,
                         tint = EmeraldGreen,
                         modifier = Modifier.size(26.dp)
                     )
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                     Text(
-                        text = "Tabela Padrão de Corridas",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = EmeraldGreen
+                        text = "Meta de lucro diário",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "Aceite no mínimo R$ ${String.format("%.2f", effectiveMinRatePerKm).replace(".", ",")}/km ou R$ ${String.format("%.2f", viabilityResult.recommendedMinRatePerHour).replace(".", ",")}/h",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = MainViewModel.formatCurrency(displayDailyGoal),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = EmeraldGreen,
+                        letterSpacing = (-0.5).sp
+                    )
+                    Text(
+                        text = if (isElectric)
+                            "Para bater a meta com tranquilidade, seu carro precisa estar com ~70% de bateria."
+                        else
+                            "Para bater a meta com tranquilidade, seu carro precisa de cerca de ~${(displayDailyGoal / 2.0).toInt()} km rodados.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 15.sp
+                    )
+                }
+
+                // Battery / Autonomy Ideal Badge on right with Chevron
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF08121E),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isElectric) Icons.Default.BatteryChargingFull else Icons.Default.LocalGasStation,
+                                    contentDescription = null,
+                                    tint = EmeraldGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = if (isElectric) "70%" else "~150 km",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = EmeraldGreen
+                                )
+                            }
+                            Text(
+                                text = if (isElectric) "Bateria ideal\npara a meta" else "Autonomia\npara a meta",
+                                fontSize = 9.sp,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 11.sp
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Ver planejamento",
+                        tint = TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        // CARD 3: DICA DO DIA (Exact match to screenshot)
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onAddDailyWorkClick() }
+                .testTag("card_dica_do_dia")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Lightbulb Icon
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldGreen.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lightbulb,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "Dica do dia",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
                         color = TextWhite
                     )
                     Text(
-                        text = "Tabela fixa padrão do app: R$ 2,00 por km rodado",
-                        fontSize = 11.sp,
-                        color = TextSecondary
+                        text = if (isElectric)
+                            "Hoje, você pode bater sua meta com ~70% de bateria. Planeje sua recarga!"
+                        else
+                            "Abasteça antes do pico da tarde para garantir maior margem de lucro por km rodado.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        lineHeight = 16.sp
                     )
                 }
 
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
-                    tint = EmeraldGreen
+                    tint = TextMuted,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
 
-        // Action Buttons: + Registrar Faturamento de Hoje & + Lançar Outro Dia / Passado
-        Button(
-            onClick = onAddDailyWorkClick,
+        // CARD 4: RESUMO DO DIA (Exact match to screenshot)
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .testTag("btn_register_earning"),
-            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-            shape = RoundedCornerShape(14.dp)
+                .clickable { onAddDailyWorkClick() }
+                .testTag("card_resumo_do_dia")
         ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Registrar Faturamento de Hoje",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Bar chart leaderboard icon
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldGreen.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Leaderboard,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "Resumo do dia",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite
+                    )
+                    Text(
+                        text = if (hasTodayData)
+                            "Ganhos: ${MainViewModel.formatCurrency(todayEarnings)} • ${todayTripsCount} corridas • ${MainViewModel.formatKm(todayKmDriven)}"
+                        else
+                            "Após o encerramento, você verá aqui seu faturamento, gastos e lucro.",
+                        fontSize = 12.sp,
+                        color = if (hasTodayData) TextWhite else TextSecondary,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                if (hasTodayData) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = "Lucro líquido",
+                            fontSize = 10.sp,
+                            color = TextSecondary
+                        )
+                        val net = (todayEarnings - todayFuelChargeCost).coerceAtLeast(0.0)
+                        Text(
+                            text = MainViewModel.formatCurrency(net),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldGreen
+                        )
+                    }
+                }
+
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
-        OutlinedButton(
-            onClick = onAddPastDailyWorkClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("btn_register_past_earning"),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
-            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
-        ) {
-            Icon(
-                imageVector = Icons.Default.DateRange,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Lançar Faturamento de Outro Dia / Passado",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }

@@ -3,16 +3,18 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Main Theme Colors
-val BackgroundDark = Color(0xFF0C121A)
-val SurfaceDark = Color(0xFF131C27)
-val CardDark = Color(0xFF192433)
-val CardHighlight = Color(0xFF223044)
-val BorderDark = Color(0xFF26374D)
+val BackgroundDark = Color(0xFF070E18)
+val SurfaceDark = Color(0xFF0D1826)
+val CardDark = Color(0xFF0B1522)
+val CardHighlight = Color(0xFF132337)
+val BorderDark = Color(0xFF162536)
+val DeepRowDark = Color(0xFF08121E)
 
-// Brand and Action Colors
-val EmeraldGreen = Color(0xFF00C06D)
-val LightEmeraldGreen = Color(0xFF25D38A)
-val DarkEmeraldGreen = Color(0xFF008F51)
+// Brand and Action Colors (Screenshot Vibrant Emerald/Neon Green)
+val EmeraldGreen = Color(0xFF00E599)
+val LightEmeraldGreen = Color(0xFF33FFAA)
+val DarkEmeraldGreen = Color(0xFF00B377)
+val NeonGreen = Color(0xFF00E599)
 
 // Financial Semantic Colors
 val ProfitGreen = Color(0xFF00C06D)

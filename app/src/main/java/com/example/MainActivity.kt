@@ -467,7 +467,11 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     val targetRecordDate = recordDialogTargetDate ?: todayDateStr
     val targetEarningRecord = dailyEarnings.find { it.dateStr == targetRecordDate }
 
-    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados, combustível/recarga e etapas)
+    val targetRecordOtherExpenses = expenses.filter {
+        it.dateStr == targetRecordDate && it.category != "Combustível" && it.category != "Recarga Elétrica"
+    }.sumOf { it.amount }
+
+    // Dialog: Registrar faturamento do dia (valor total ganho, total de corridas, km rodados, combustível/recarga, outros gastos e etapas)
     if (showRecordDailyWorkDialog) {
         RecordDailyWorkDialog(
             initialDate = targetRecordDate,
@@ -481,10 +485,19 @@ fun MainAppScaffold(viewModel: MainViewModel) {
             initialEndTime = targetEarningRecord?.endTime.orEmpty(),
             initialFuelCost = targetEarningRecord?.fuelOrChargeCost ?: 0.0,
             initialIsElectric = targetEarningRecord?.isElectricCharge ?: vehicleProfile.isElectric,
+            initialOtherExpenses = targetRecordOtherExpenses,
             existingEarnings = dailyEarnings,
             onDismiss = { showRecordDailyWorkDialog = false },
-            onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end, fuelCost, isElectric ->
+            onConfirm = { date, amount, trips, km, notes, start, lunchStart, lunchEnd, end, fuelCost, isElectric, otherExp ->
                 viewModel.recordDailyWork(date, amount, trips, km, notes, start, lunchStart, lunchEnd, end, fuelCost, isElectric)
+                if (otherExp > 0 && targetRecordOtherExpenses == 0.0) {
+                    viewModel.addExpense(
+                        category = "Outros / Alimentação",
+                        amount = otherExp,
+                        description = "Alimentação / gastos do dia",
+                        date = date
+                    )
+                }
                 showRecordDailyWorkDialog = false
             }
         )
