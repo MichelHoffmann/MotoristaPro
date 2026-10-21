@@ -93,7 +93,65 @@ fun MainAppScaffold(viewModel: MainViewModel) {
         }
     }
 
-    // If profile is not configured yet, show New User Menu on start
+    // 1. Initial Screen: Login / Cadastro if user is not authenticated
+    if (!authUser.isLoggedIn) {
+        LoginScreen(
+            currentUser = authUser,
+            onLoginWithEmailPassword = { email, password, onResult ->
+                viewModel.loginWithEmailPassword(email, password) { success, err ->
+                    if (success) {
+                        if (!vehicleProfile.isProfileConfigured) {
+                            currentScreen = AppScreen.NEW_USER
+                        } else {
+                            currentScreen = AppScreen.HOME
+                        }
+                    }
+                    onResult(success, err)
+                }
+            },
+            onRegisterWithEmailPassword = { email, password, name, onResult ->
+                viewModel.registerWithEmailPassword(email, password, name) { success, err ->
+                    if (success) {
+                        currentScreen = AppScreen.NEW_USER
+                    }
+                    onResult(success, err)
+                }
+            },
+            onSignInWithGoogle = { activityContext, onResult ->
+                viewModel.signInWithGoogle(activityContext) { success, err ->
+                    if (success) {
+                        if (!vehicleProfile.isProfileConfigured) {
+                            currentScreen = AppScreen.NEW_USER
+                        } else {
+                            currentScreen = AppScreen.HOME
+                        }
+                    }
+                    onResult(success, err)
+                }
+            },
+            onSimulatedGoogleLogin = { name, email ->
+                viewModel.loginWithSimulatedGoogle(name, email)
+                if (!vehicleProfile.isProfileConfigured) {
+                    currentScreen = AppScreen.NEW_USER
+                } else {
+                    currentScreen = AppScreen.HOME
+                }
+            },
+            onGuestLogin = {
+                viewModel.loginAsGuest()
+                if (!vehicleProfile.isProfileConfigured) {
+                    currentScreen = AppScreen.NEW_USER
+                } else {
+                    currentScreen = AppScreen.HOME
+                }
+            },
+            onLogout = { viewModel.logout() },
+            isInitialLogin = true
+        )
+        return
+    }
+
+    // 2. After login: If vehicle profile is not configured yet, show Vehicle Registration
     if (!vehicleProfile.isProfileConfigured || currentScreen == AppScreen.NEW_USER) {
         NewUserScreen(
             currentProfile = vehicleProfile,
@@ -333,6 +391,26 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                 )
                 AppScreen.LOGIN -> LoginScreen(
                     currentUser = authUser,
+                    onLoginWithEmailPassword = { email, password, onResult ->
+                        viewModel.loginWithEmailPassword(email, password) { success, err ->
+                            if (success) {
+                                if (!vehicleProfile.isProfileConfigured) {
+                                    currentScreen = AppScreen.NEW_USER
+                                } else {
+                                    currentScreen = AppScreen.HOME
+                                }
+                            }
+                            onResult(success, err)
+                        }
+                    },
+                    onRegisterWithEmailPassword = { email, password, name, onResult ->
+                        viewModel.registerWithEmailPassword(email, password, name) { success, err ->
+                            if (success) {
+                                currentScreen = AppScreen.NEW_USER
+                            }
+                            onResult(success, err)
+                        }
+                    },
                     onSignInWithGoogle = { activityContext, onResult ->
                         viewModel.signInWithGoogle(activityContext, onResult)
                     },
@@ -342,7 +420,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onGuestLogin = { viewModel.loginAsGuest() },
                     onLogout = { viewModel.logout() },
                     onNavigateBack = { currentScreen = AppScreen.HOME },
-                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA }
+                    isInitialLogin = false
                 )
                 AppScreen.SUPABASE_DATA -> SupabaseDataScreen(
                     dadosList = dadosList,

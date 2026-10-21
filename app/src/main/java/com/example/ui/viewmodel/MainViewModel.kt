@@ -201,7 +201,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lunchStartTime = if (lunchStartTime.isNotBlank()) lunchStartTime else existing.lunchStartTime,
                     lunchEndTime = if (lunchEndTime.isNotBlank()) lunchEndTime else existing.lunchEndTime,
                     endTime = if (endTime.isNotBlank()) endTime else existing.endTime,
-                    fuelOrChargeCost = if (fuelOrChargeCost > 0) fuelOrChargeCost else existing.fuelOrChargeCost,
+                    fuelOrChargeCost = fuelOrChargeCost,
                     isElectricCharge = isElectricCharge,
                     timestamp = System.currentTimeMillis()
                 )
@@ -223,29 +223,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             repository.addDailyEarning(updated)
 
-            // If fuel/recharge was recorded, also log as FuelChargeRecord & Expense
-            if (fuelOrChargeCost > 0.0) {
-                val catName = if (isElectricCharge) "Recarga Elétrica" else "Combustível"
-                val desc = if (isElectricCharge) "Recarga do dia $effectiveDate" else "Abastecimento do dia $effectiveDate"
-                repository.addFuelChargeRecord(
-                    FuelChargeRecord(
-                        dateStr = effectiveDate,
-                        isElectricCharge = isElectricCharge,
-                        quantity = 0.0,
-                        unitPrice = 0.0,
-                        totalCost = fuelOrChargeCost,
-                        notes = desc
-                    )
-                )
-                repository.addExpense(
-                    Expense(
-                        category = catName,
-                        amount = fuelOrChargeCost,
-                        description = desc,
-                        dateStr = effectiveDate
-                    )
-                )
-            }
+            // Update or remove fuel/recharge expense and record for this date
+            repository.updateFuelExpenseForDate(effectiveDate, fuelOrChargeCost, isElectricCharge)
 
             // Update odometer if km is greater
             val currentProf = vehicleProfile.value
@@ -597,6 +576,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loginAsGuest() {
         authManager.loginAsGuest()
+    }
+
+    fun registerWithEmailPassword(
+        email: String,
+        password: String,
+        name: String = "",
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = repository.registerUserAccount(email, password, name)
+            result.onSuccess { user ->
+                authManager.saveUser(
+                    com.example.model.AuthUser(
+                        id = user.id.toString(),
+                        name = user.name.ifBlank { user.email.substringBefore("@") },
+                        email = user.email,
+                        isLoggedIn = true,
+                        isGuest = false
+                    )
+                )
+                onResult(true, null)
+            }.onFailure { err ->
+                onResult(false, err.message)
+            }
+        }
+    }
+
+    fun loginWithEmailPassword(
+        email: String,
+        password: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = repository.verifyUserLogin(email, password)
+            result.onSuccess { user ->
+                authManager.saveUser(
+                    com.example.model.AuthUser(
+                        id = user.id.toString(),
+                        name = user.name.ifBlank { user.email.substringBefore("@") },
+                        email = user.email,
+                        isLoggedIn = true,
+                        isGuest = false
+                    )
+                )
+                onResult(true, null)
+            }.onFailure { err ->
+                onResult(false, err.message)
+            }
+        }
     }
 
     fun logout() {

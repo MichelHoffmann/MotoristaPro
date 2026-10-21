@@ -20,9 +20,10 @@ import com.example.model.WorkDay
         VehicleProfile::class,
         VehicleCostItem::class,
         FuelChargeRecord::class,
-        Dado::class
+        Dado::class,
+        com.example.model.UserAccount::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

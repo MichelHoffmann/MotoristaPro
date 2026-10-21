@@ -556,20 +556,194 @@ fun PlanningScreen(
             }
         }
 
-        // Button: Lançar Faturamento de Outro Dia / Passado
-        OutlinedButton(
-            onClick = { onAddEarningsForDate("") },
+        // Card: Editar Informações de Dias Anteriores / Passados
+        val yesterdayDateStr = remember {
+            val c = Calendar.getInstance()
+            c.add(Calendar.DAY_OF_YEAR, -1)
+            java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(c.time)
+        }
+        val dayBeforeYesterdayDateStr = remember {
+            val c = Calendar.getInstance()
+            c.add(Calendar.DAY_OF_YEAR, -2)
+            java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(c.time)
+        }
+
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .testTag("btn_launch_past_earnings_planning"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
-            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
+                .testTag("card_edit_past_days_planning")
         ) {
-            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Lançar Ganhos de Outro Dia / Passado", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EditCalendar,
+                            contentDescription = null,
+                            tint = EmeraldGreen,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Editar Dias que Já Passaram",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextWhite
+                            )
+                            Text(
+                                text = "Ajuste faturamento, km, combustível ou corridas",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                // Quick buttons for Ontem and Anteontem
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onAddEarningsForDate(yesterdayDateStr) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.5f))
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Editar Ontem", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { onAddEarningsForDate(dayBeforeYesterdayDateStr) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark)
+                    ) {
+                        Icon(Icons.Default.EventRepeat, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextSecondary)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Anteontem", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                // Past days with records in this month
+                val pastEarningsThisMonth = monthEarnings.filter {
+                    val parts = it.dateStr.split("/")
+                    val dayNum = parts.getOrNull(0)?.toIntOrNull() ?: 0
+                    if (year < todayYear) true
+                    else if (year == todayYear && month < todayMonth) true
+                    else if (year == todayYear && month == todayMonth) dayNum <= todayDay
+                    else false
+                }.sortedByDescending {
+                    it.dateStr.split("/").getOrNull(0)?.toIntOrNull() ?: 0
+                }
+
+                if (pastEarningsThisMonth.isNotEmpty()) {
+                    Text(
+                        text = "Lançamentos deste mês (toque para editar):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+
+                    pastEarningsThisMonth.take(5).forEach { earning ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SurfaceDark,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onAddEarningsForDate(earning.dateStr) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = "Dia ${earning.dateStr}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextWhite
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = MainViewModel.formatCurrency(earning.totalAmount),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ProfitGreen
+                                        )
+                                        Text("•", color = TextMuted, fontSize = 11.sp)
+                                        Text("${earning.tripsCount} corridas", fontSize = 11.sp, color = TextSecondary)
+                                        Text("•", color = TextMuted, fontSize = 11.sp)
+                                        Text(MainViewModel.formatKm(earning.kmDriven), fontSize = 11.sp, color = TextSecondary)
+                                        if (earning.fuelOrChargeCost > 0) {
+                                            Text("•", color = TextMuted, fontSize = 11.sp)
+                                            Text(
+                                                text = if (earning.isElectricCharge) "⚡ ${MainViewModel.formatCurrency(earning.fuelOrChargeCost)}" else "⛽ ${MainViewModel.formatCurrency(earning.fuelOrChargeCost)}",
+                                                fontSize = 11.sp,
+                                                color = FuelOrange,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    color = EmeraldGreen.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Editar", tint = EmeraldGreen, modifier = Modifier.size(14.dp))
+                                        Text("Editar", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // General Button: Lançar / Editar Qualquer Outro Dia Passado
+                Button(
+                    onClick = { onAddEarningsForDate(yesterdayDateStr) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Escolher Outra Data Passada para Editar", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
         }
 
         // List of Holidays in this Month with full description and details

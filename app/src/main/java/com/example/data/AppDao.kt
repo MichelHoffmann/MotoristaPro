@@ -109,4 +109,14 @@ interface AppDao {
 
     @Query("DELETE FROM dados")
     suspend fun clearAllDados()
+
+    // User Accounts (Cadastro e Login)
+    @Query("SELECT * FROM user_accounts WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+    suspend fun getUserByEmail(email: String): com.example.model.UserAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUserAccount(user: com.example.model.UserAccount): Long
+
+    @Query("SELECT * FROM user_accounts ORDER BY id DESC")
+    fun getAllUserAccounts(): Flow<List<com.example.model.UserAccount>>
 }

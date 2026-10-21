@@ -13,7 +13,7 @@ import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +50,9 @@ fun ReportsScreen(
     }
 
     val todayDateStr = MainViewModel.getTodayDateString()
+    var selectedDateStr by remember { mutableStateOf(todayDateStr) }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
+
     val cal = Calendar.getInstance()
     val currentYear = cal.get(Calendar.YEAR)
     val currentMonth = cal.get(Calendar.MONTH)
@@ -57,7 +60,7 @@ fun ReportsScreen(
 
     // Filter earnings by period
     val filteredEarnings = when (selectedPeriod) {
-        PeriodFilter.DIARIO -> dailyEarnings.filter { it.dateStr == todayDateStr }
+        PeriodFilter.DIARIO -> dailyEarnings.filter { it.dateStr == selectedDateStr }
         PeriodFilter.SEMANAL -> dailyEarnings.filter {
             val parts = it.dateStr.split("/")
             if (parts.size == 3) {
@@ -87,7 +90,7 @@ fun ReportsScreen(
 
     // Filter expenses by period
     val filteredExpenses = when (selectedPeriod) {
-        PeriodFilter.DIARIO -> expenses.filter { it.dateStr == todayDateStr }
+        PeriodFilter.DIARIO -> expenses.filter { it.dateStr == selectedDateStr }
         PeriodFilter.SEMANAL -> expenses.filter {
             val parts = it.dateStr.split("/")
             if (parts.size == 3) {
@@ -179,44 +182,96 @@ fun ReportsScreen(
             }
         )
 
-        // Date selector box
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(CardDark)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Date Selector & Day Navigator
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CardDark,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = when (selectedPeriod) {
-                        PeriodFilter.DIARIO -> "Hoje - ${MainViewModel.getTodayDateString()}"
-                        PeriodFilter.SEMANAL -> "Esta Semana"
-                        PeriodFilter.MENSAL -> "Este Mês"
-                        PeriodFilter.ANUAL -> "Este Ano"
-                    },
-                    fontSize = 13.sp,
-                    color = TextWhite,
-                    fontWeight = FontWeight.SemiBold
-                )
+                if (selectedPeriod == PeriodFilter.DIARIO) {
+                    IconButton(
+                        onClick = {
+                            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                            try {
+                                val d = sdf.parse(selectedDateStr) ?: java.util.Date()
+                                val c = Calendar.getInstance().apply { time = d }
+                                c.add(Calendar.DAY_OF_YEAR, -1)
+                                selectedDateStr = sdf.format(c.time)
+                            } catch (e: Exception) {
+                                // fallback
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Dia Anterior", tint = EmeraldGreen)
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(40.dp))
+                }
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { showDatePickerDialog = true }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = when (selectedPeriod) {
+                                PeriodFilter.DIARIO -> {
+                                    if (selectedDateStr == todayDateStr) "Hoje • $selectedDateStr"
+                                    else "Dia: $selectedDateStr"
+                                }
+                                PeriodFilter.SEMANAL -> "Esta Semana"
+                                PeriodFilter.MENSAL -> "Este Mês (${MainViewModel.getCurrentMonthName(currentMonth)})"
+                                PeriodFilter.ANUAL -> "Este Ano ($currentYear)"
+                            },
+                            fontSize = 14.sp,
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (selectedPeriod == PeriodFilter.DIARIO) "Toque para escolher uma data específica" else "Toque para ver períodos",
+                            fontSize = 11.sp,
+                            color = EmeraldGreen
+                        )
+                    }
+                }
+
+                if (selectedPeriod == PeriodFilter.DIARIO) {
+                    IconButton(
+                        onClick = {
+                            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                            try {
+                                val d = sdf.parse(selectedDateStr) ?: java.util.Date()
+                                val c = Calendar.getInstance().apply { time = d }
+                                c.add(Calendar.DAY_OF_YEAR, 1)
+                                selectedDateStr = sdf.format(c.time)
+                            } catch (e: Exception) {
+                                // fallback
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Próximo Dia", tint = EmeraldGreen)
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(40.dp))
+                }
             }
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
         }
 
         // Resumo no período
@@ -823,9 +878,9 @@ fun ReportsScreen(
             }
         }
 
-        // Action Button: Lançar Faturamento de Outro Dia / Passado
+        // Action Button: Lançar / Editar Faturamento Desta Data
         OutlinedButton(
-            onClick = { onAddEarningsForDate("") },
+            onClick = { onAddEarningsForDate(selectedDateStr) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -833,11 +888,140 @@ fun ReportsScreen(
             colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
             border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen)
         ) {
-            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.EditCalendar, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Lançar Ganhos de Outro Dia / Passado", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(
+                text = if (filteredEarnings.isNotEmpty()) "Editar Informações de $selectedDateStr" else "Lançar Informações de $selectedDateStr",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+    }
+
+    // Modal to Select Specific Date for Report
+    if (showDatePickerDialog) {
+        var dateTextInput by remember { mutableStateOf(selectedDateStr) }
+        val yesterdayStr = remember {
+            val c = Calendar.getInstance()
+            c.add(Calendar.DAY_OF_YEAR, -1)
+            java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(c.time)
+        }
+        val dayBeforeYesterdayStr = remember {
+            val c = Calendar.getInstance()
+            c.add(Calendar.DAY_OF_YEAR, -2)
+            java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(c.time)
+        }
+
+        val datesWithData = (dailyEarnings.map { it.dateStr } + expenses.map { it.dateStr })
+            .distinct()
+            .take(6)
+
+        AlertDialog(
+            onDismissRequest = { showDatePickerDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.CalendarToday, contentDescription = null, tint = EmeraldGreen)
+                    Text("Selecionar Data do Relatório", fontWeight = FontWeight.Bold, color = TextWhite, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Escolha um dia rápido ou digite a data para visualizar o relatório detalhado de faturamento e despesas:",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+
+                    // Quick Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = dateTextInput == todayDateStr,
+                            onClick = { dateTextInput = todayDateStr },
+                            label = { Text("Hoje", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = EmeraldGreen, selectedLabelColor = Color.White)
+                        )
+                        FilterChip(
+                            selected = dateTextInput == yesterdayStr,
+                            onClick = { dateTextInput = yesterdayStr },
+                            label = { Text("Ontem", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = EmeraldGreen, selectedLabelColor = Color.White)
+                        )
+                        FilterChip(
+                            selected = dateTextInput == dayBeforeYesterdayStr,
+                            onClick = { dateTextInput = dayBeforeYesterdayStr },
+                            label = { Text("Anteontem", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = EmeraldGreen, selectedLabelColor = Color.White)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = dateTextInput,
+                        onValueChange = { dateTextInput = it },
+                        label = { Text("Data (DD/MM/AAAA)") },
+                        placeholder = { Text("Ex: 14/10/2026") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderDark,
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedContainerColor = SurfaceDark,
+                            unfocusedContainerColor = SurfaceDark
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (datesWithData.isNotEmpty()) {
+                        Text(
+                            text = "Datas com lançamentos gravados:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            datesWithData.take(3).forEach { dStr ->
+                                SuggestionChip(
+                                    onClick = { dateTextInput = dStr },
+                                    label = { Text(dStr, fontSize = 11.sp, color = TextWhite) },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(containerColor = SurfaceDark)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = dateTextInput.trim()
+                        if (clean.isNotBlank()) {
+                            selectedDateStr = clean
+                            onPeriodSelected(PeriodFilter.DIARIO)
+                        }
+                        showDatePickerDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                ) {
+                    Text("Visualizar Relatório", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePickerDialog = false }) {
+                    Text("Cancelar", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
     }
 }

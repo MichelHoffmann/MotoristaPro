@@ -160,105 +160,24 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Header
-        Row(
+        // Top Header (Limpo e elegante, sem poluição de ícones)
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Column {
-                Text(
-                    text = MainViewModel.getTodayHeaderString(),
-                    fontSize = 13.sp,
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Medium
-                )
-                val firstName = vehicleProfile.driverName.trim().split("\\s+".toRegex()).firstOrNull().orEmpty()
-                Text(
-                    text = if (firstName.isNotBlank()) "Olá, $firstName" else "Início",
-                    fontSize = 24.sp,
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Vehicle Shortcut
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(CardDark)
-                        .clickable { onNavigateToVehicle() }
-                        .testTag("btn_vehicle_shortcut"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.DirectionsCar,
-                        contentDescription = "Meu Veículo",
-                        tint = EmeraldGreen,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Calendar Shortcut
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(CardDark)
-                        .clickable { onNavigateToPlanning() }
-                        .testTag("btn_planning_shortcut"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CalendarMonth,
-                        contentDescription = "Planejamento e Calendário",
-                        tint = EmeraldGreen,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Supabase Shortcut
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(CardDark)
-                        .clickable { onNavigateToSupabase() }
-                        .testTag("btn_supabase_shortcut"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CloudSync,
-                        contentDescription = "Supabase (Tabela dados)",
-                        tint = EmeraldGreen,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Profile / Google Login button
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(if (authUser?.isLoggedIn == true) EmeraldGreen.copy(alpha = 0.2f) else CardDark)
-                        .border(
-                            width = if (authUser?.isLoggedIn == true) 1.5.dp else 0.dp,
-                            color = if (authUser?.isLoggedIn == true) EmeraldGreen else Color.Transparent,
-                            shape = CircleShape
-                        )
-                        .clickable { onNavigateToLogin() }
-                        .testTag("btn_open_login_menu"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (authUser?.isLoggedIn == true) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
-                        contentDescription = "Conta e Login Google",
-                        tint = if (authUser?.isLoggedIn == true) EmeraldGreen else TextWhite,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
+            Text(
+                text = MainViewModel.getTodayHeaderString(),
+                fontSize = 13.sp,
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium
+            )
+            val firstName = vehicleProfile.driverName.trim().split("\\s+".toRegex()).firstOrNull().orEmpty()
+            Text(
+                text = if (firstName.isNotBlank()) "Olá, $firstName" else "Início",
+                fontSize = 26.sp,
+                color = TextWhite,
+                fontWeight = FontWeight.ExtraBold
+            )
         }
 
         // Notification Banner: Shown when earnings, km and trip count for today haven't been entered yet

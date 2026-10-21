@@ -241,3 +241,17 @@ data class AuthUser(
     val isLoggedIn: Boolean = false,
     val isGuest: Boolean = false
 )
+
+/**
+ * Conta de usuário salva localmente / no banco de dados para Login e Cadastro
+ */
+@androidx.room.Entity(tableName = "user_accounts")
+data class UserAccount(
+    @androidx.room.PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val email: String,
+    val password: String,
+    val name: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+

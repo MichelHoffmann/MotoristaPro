@@ -140,4 +140,40 @@ class AppRepository(private val dao: AppDao) {
             )
         }
     }
+
+    // User Account Registration and Verification
+    suspend fun getUserByEmail(email: String): com.example.model.UserAccount? {
+        return dao.getUserByEmail(email.trim().lowercase())
+    }
+
+    suspend fun registerUserAccount(email: String, password: String, name: String): Result<com.example.model.UserAccount> {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            return Result.failure(IllegalArgumentException("Informe um e-mail válido."))
+        }
+        if (password.length < 4) {
+            return Result.failure(IllegalArgumentException("A senha deve ter pelo menos 4 caracteres."))
+        }
+        val existing = dao.getUserByEmail(cleanEmail)
+        if (existing != null) {
+            return Result.failure(IllegalStateException("Este e-mail já está cadastrado. Faça login."))
+        }
+        val user = com.example.model.UserAccount(
+            email = cleanEmail,
+            password = password,
+            name = name.trim()
+        )
+        val id = dao.insertUserAccount(user)
+        return Result.success(user.copy(id = id))
+    }
+
+    suspend fun verifyUserLogin(email: String, password: String): Result<com.example.model.UserAccount> {
+        val cleanEmail = email.trim().lowercase()
+        val user = dao.getUserByEmail(cleanEmail)
+            ?: return Result.failure(IllegalArgumentException("Conta não encontrada. Verifique o e-mail ou cadastre-se."))
+        if (user.password != password) {
+            return Result.failure(IllegalArgumentException("Senha incorreta. Tente novamente."))
+        }
+        return Result.success(user)
+    }
 }
