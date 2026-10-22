@@ -27,9 +27,7 @@ fun MoreSheet(
     onNavigateToVehicle: () -> Unit,
     onNavigateToPlanning: () -> Unit,
     onNavigateToExpenses: () -> Unit,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToSupabase: () -> Unit = {},
-    onNavigateToLogin: () -> Unit = {}
+    onNavigateToSettings: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -81,43 +79,24 @@ fun MoreSheet(
                 )
             }
 
-            // Section 2: Supabase (Tabela dados) & Login Google
+            // Section 2: Despesas & Configurações
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MoreSheetCard(
-                    title = "Supabase",
-                    subtitle = "Tabela dados (Anon Key)",
-                    icon = Icons.Outlined.CloudSync,
-                    iconBg = EmeraldGreen.copy(alpha = 0.2f),
-                    iconTint = EmeraldGreen,
+                    title = "Despesas",
+                    subtitle = "Gastos e comprovantes",
+                    icon = Icons.Outlined.ReceiptLong,
+                    iconBg = ExpenseRedSoft.copy(alpha = 0.2f),
+                    iconTint = ExpenseRedSoft,
                     onClick = {
                         onDismiss()
-                        onNavigateToSupabase()
+                        onNavigateToExpenses()
                     },
-                    modifier = Modifier.weight(1f).testTag("more_supabase_card")
+                    modifier = Modifier.weight(1f).testTag("more_expenses_card")
                 )
 
-                MoreSheetCard(
-                    title = "Conta Google",
-                    subtitle = "Login e autenticação",
-                    icon = Icons.Outlined.AccountCircle,
-                    iconBg = MetricBlue.copy(alpha = 0.2f),
-                    iconTint = MetricBlue,
-                    onClick = {
-                        onDismiss()
-                        onNavigateToLogin()
-                    },
-                    modifier = Modifier.weight(1f).testTag("more_login_card")
-                )
-            }
-
-            // Section 3: Configurações
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
                 MoreSheetCard(
                     title = "Configurações",
                     subtitle = "Perfil, dados e reset",
@@ -128,7 +107,7 @@ fun MoreSheet(
                         onDismiss()
                         onNavigateToSettings()
                     },
-                    modifier = Modifier.fillMaxWidth().testTag("more_settings_card")
+                    modifier = Modifier.weight(1f).testTag("more_settings_card")
                 )
             }
 

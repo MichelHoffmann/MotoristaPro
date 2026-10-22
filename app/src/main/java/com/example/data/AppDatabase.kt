@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.model.Dado
 import com.example.model.DailyEarning
 import com.example.model.Expense
 import com.example.model.FuelChargeRecord
@@ -19,11 +18,9 @@ import com.example.model.WorkDay
         Expense::class,
         VehicleProfile::class,
         VehicleCostItem::class,
-        FuelChargeRecord::class,
-        Dado::class,
-        com.example.model.UserAccount::class
+        FuelChargeRecord::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

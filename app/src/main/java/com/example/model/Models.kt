@@ -212,46 +212,15 @@ data class VehicleProfile(
     val avgDailyKm: Double = 150.0, // Quilometragem média diária estimada
     val avgDailyHours: Double = 8.0, // Horas médias trabalhadas por dia
     val deadheadPercentage: Double = 25.0, // % de km sem passageiros (deslocamento/retorno)
-    val safetyMarginPercentage: Double = 10.0 // % margem de segurança para imprevistos
+    val safetyMarginPercentage: Double = 10.0, // % margem de segurança para imprevistos
+    // Plataforma de trabalho e contato do motorista
+    val platform: String = "Uber e 99", // Uber, 99, Ambos, etc.
+    val phoneNumber: String = "",
+    val vehicleBrand: String = ""
 )
 
-/**
- * Tabela 'dados' do Supabase conforme solicitado pelo usuário:
- * Colunas: id, usuário, conteúdo
- */
-@Entity(tableName = "dados")
-data class Dado(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val usuario: String,
-    val conteudo: String,
-    val createdAt: String = "",
-    val isSyncedWithSupabase: Boolean = true
-)
-
-/**
- * Usuário autenticado via Google Sign-in / Supabase Auth
- */
-data class AuthUser(
-    val id: String = "",
-    val name: String = "",
-    val email: String = "",
-    val photoUrl: String = "",
-    val idToken: String = "",
-    val isLoggedIn: Boolean = false,
-    val isGuest: Boolean = false
-)
-
-/**
- * Conta de usuário salva localmente / no banco de dados para Login e Cadastro
- */
-@androidx.room.Entity(tableName = "user_accounts")
-data class UserAccount(
-    @androidx.room.PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val email: String,
-    val password: String,
-    val name: String = "",
-    val createdAt: Long = System.currentTimeMillis()
-)
-
+enum class WorkShiftState {
+    IDLE,       // Não iniciado
+    WORKING,    // Trabalhando (cronômetro ativo)
+    ON_BREAK    // Em descanso / pausa
+}

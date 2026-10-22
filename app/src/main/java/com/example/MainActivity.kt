@@ -32,6 +32,9 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
 
 enum class AppScreen {
+    WELCOME,
+    IMPORT_DATA,
+    REGISTRATION,
     HOME,
     PLANNING,
     REPORTS,
@@ -39,8 +42,7 @@ enum class AppScreen {
     SETTINGS,
     VEHICLE,
     NEW_USER,
-    LOGIN,
-    SUPABASE_DATA
+    MY_DATA
 }
 
 class MainActivity : ComponentActivity() {
@@ -60,7 +62,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainAppScaffold(viewModel: MainViewModel) {
-    var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+    var currentScreen by remember { mutableStateOf(AppScreen.WELCOME) }
     var showMoreSheet by remember { mutableStateOf(false) }
 
     // Dialog visibility states
@@ -82,77 +84,101 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
     val selectedExpenseTab by viewModel.selectedExpenseTab.collectAsStateWithLifecycle()
 
-    val authUser by viewModel.authUser.collectAsStateWithLifecycle()
-    val dadosList by viewModel.dados.collectAsStateWithLifecycle()
-    val supabaseSyncState by viewModel.supabaseSyncState.collectAsStateWithLifecycle()
+    // Shift Stopwatch State
+    val shiftState by viewModel.shiftState.collectAsStateWithLifecycle()
+    val shiftStartTimeStr by viewModel.shiftStartTimeStr.collectAsStateWithLifecycle()
+    val shiftStartTimeMillis by viewModel.shiftStartTimeMillis.collectAsStateWithLifecycle()
+    val accumulatedWorkSeconds by viewModel.accumulatedWorkSeconds.collectAsStateWithLifecycle()
+    val breakStartTimeMillis by viewModel.breakStartTimeMillis.collectAsStateWithLifecycle()
+    val accumulatedBreakSeconds by viewModel.accumulatedBreakSeconds.collectAsStateWithLifecycle()
 
     // Handle back button on sub-screens
-    if (currentScreen != AppScreen.HOME) {
+    if (currentScreen != AppScreen.HOME && currentScreen != AppScreen.WELCOME) {
         BackHandler {
-            currentScreen = AppScreen.HOME
+            currentScreen = when (currentScreen) {
+                AppScreen.IMPORT_DATA, AppScreen.REGISTRATION -> AppScreen.WELCOME
+                else -> AppScreen.HOME
+            }
         }
     }
 
-    // 1. Initial Screen: Login / Cadastro if user is not authenticated
-    if (!authUser.isLoggedIn) {
-        LoginScreen(
-            currentUser = authUser,
-            onLoginWithEmailPassword = { email, password, onResult ->
-                viewModel.loginWithEmailPassword(email, password) { success, err ->
-                    if (success) {
-                        if (!vehicleProfile.isProfileConfigured) {
-                            currentScreen = AppScreen.NEW_USER
-                        } else {
-                            currentScreen = AppScreen.HOME
-                        }
-                    }
-                    onResult(success, err)
-                }
+    // 1. Initial Screen: Welcome Screen
+    if (currentScreen == AppScreen.WELCOME) {
+        WelcomeScreen(
+            appName = "Motorista Pro",
+            onExistingUserClick = {
+                currentScreen = AppScreen.IMPORT_DATA
             },
-            onRegisterWithEmailPassword = { email, password, name, onResult ->
-                viewModel.registerWithEmailPassword(email, password, name) { success, err ->
-                    if (success) {
-                        currentScreen = AppScreen.NEW_USER
-                    }
-                    onResult(success, err)
-                }
-            },
-            onSignInWithGoogle = { activityContext, onResult ->
-                viewModel.signInWithGoogle(activityContext) { success, err ->
-                    if (success) {
-                        if (!vehicleProfile.isProfileConfigured) {
-                            currentScreen = AppScreen.NEW_USER
-                        } else {
-                            currentScreen = AppScreen.HOME
-                        }
-                    }
-                    onResult(success, err)
-                }
-            },
-            onSimulatedGoogleLogin = { name, email ->
-                viewModel.loginWithSimulatedGoogle(name, email)
-                if (!vehicleProfile.isProfileConfigured) {
-                    currentScreen = AppScreen.NEW_USER
-                } else {
-                    currentScreen = AppScreen.HOME
-                }
-            },
-            onGuestLogin = {
-                viewModel.loginAsGuest()
-                if (!vehicleProfile.isProfileConfigured) {
-                    currentScreen = AppScreen.NEW_USER
-                } else {
-                    currentScreen = AppScreen.HOME
-                }
-            },
-            onLogout = { viewModel.logout() },
-            isInitialLogin = true
+            onNewUserClick = {
+                currentScreen = AppScreen.REGISTRATION
+            }
         )
         return
     }
 
-    // 2. After login: If vehicle profile is not configured yet, show Vehicle Registration
-    if (!vehicleProfile.isProfileConfigured || currentScreen == AppScreen.NEW_USER) {
+    // 2. Import Data Screen ("Já tem cadastro? Importar arquivo CSV")
+    if (currentScreen == AppScreen.IMPORT_DATA) {
+        ImportDataScreen(
+            appName = "Motorista Pro",
+            onNavigateBack = { currentScreen = AppScreen.WELCOME },
+            onImportSuccess = { currentScreen = AppScreen.HOME },
+            onContinueWithoutImport = {
+                if (!vehicleProfile.isProfileConfigured) {
+                    currentScreen = AppScreen.REGISTRATION
+                } else {
+                    currentScreen = AppScreen.HOME
+                }
+            },
+            onImportCsvData = { items ->
+                items.forEach { (date, amt) ->
+                    viewModel.recordDailyWork(
+                        date = date,
+                        totalAmount = amt,
+                        tripsCount = (amt / 18.0).toInt().coerceAtLeast(1),
+                        kmDriven = (amt * 0.45),
+                        notes = "Importado via CSV",
+                        startTime = "08:00",
+                        lunchStartTime = "12:00",
+                        lunchEndTime = "13:00",
+                        endTime = "18:00",
+                        fuelOrChargeCost = 0.0,
+                        isElectricCharge = vehicleProfile.isElectric
+                    )
+                }
+            }
+        )
+        return
+    }
+
+    // 3. New User Registration Wizard ("Vamos começar!" -> "Dados do veículo")
+    if (currentScreen == AppScreen.REGISTRATION) {
+        RegistrationWizardScreen(
+            appName = "Motorista Pro",
+            currentProfile = vehicleProfile,
+            onNavigateBack = { currentScreen = AppScreen.WELCOME },
+            onComplete = { name, model, year, fuelType, isElectric, consumption, price, mileage, monthlyGoal, platform, phone, brand ->
+                viewModel.saveUserProfile(
+                    name = name,
+                    model = model,
+                    year = year,
+                    fuelType = fuelType,
+                    isElectric = isElectric,
+                    avgConsumption = consumption,
+                    fuelOrEnergyPrice = price,
+                    currentMileage = mileage,
+                    monthlyGoal = monthlyGoal,
+                    platform = platform,
+                    phoneNumber = phone,
+                    vehicleBrand = brand
+                )
+                currentScreen = AppScreen.HOME
+            }
+        )
+        return
+    }
+
+    // 4. Vehicle Registration Screen (from Settings/Profile)
+    if (currentScreen == AppScreen.NEW_USER) {
         NewUserScreen(
             currentProfile = vehicleProfile,
             onSaveProfile = { name, model, year, fuelType, isElectric, consumption, price, mileage, monthlyGoal ->
@@ -169,9 +195,9 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                 )
                 currentScreen = AppScreen.HOME
             },
-            onCancel = if (vehicleProfile.isProfileConfigured) {
-                { currentScreen = AppScreen.SETTINGS }
-            } else null
+            onCancel = {
+                currentScreen = if (vehicleProfile.isProfileConfigured) AppScreen.SETTINGS else AppScreen.WELCOME
+            }
         )
         return
     }
@@ -270,23 +296,22 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     modifier = Modifier.testTag("nav_reports")
                 )
 
-                // 4. Mais / Meu Veículo / Configurações
-                val isMoreScreen = currentScreen == AppScreen.SETTINGS || currentScreen == AppScreen.VEHICLE
+                // 4. Meus Dados (Informações cadastradas & Exportar CSV)
                 NavigationBarItem(
-                    selected = isMoreScreen,
-                    onClick = { showMoreSheet = true },
+                    selected = currentScreen == AppScreen.MY_DATA,
+                    onClick = { currentScreen = AppScreen.MY_DATA },
                     icon = {
                         Icon(
-                            imageVector = Icons.Filled.MoreHoriz,
-                            contentDescription = "Mais",
+                            imageVector = if (currentScreen == AppScreen.MY_DATA) Icons.Filled.Person else Icons.Outlined.Person,
+                            contentDescription = "Meus Dados",
                             modifier = Modifier.size(22.dp)
                         )
                     },
                     label = {
                         Text(
-                            text = "Mais",
+                            text = "Meus Dados",
                             fontSize = 11.sp,
-                            fontWeight = if (isMoreScreen) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (currentScreen == AppScreen.MY_DATA) FontWeight.Bold else FontWeight.Normal
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
@@ -296,7 +321,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                         unselectedIconColor = TextSecondary,
                         unselectedTextColor = TextSecondary
                     ),
-                    modifier = Modifier.testTag("nav_more")
+                    modifier = Modifier.testTag("nav_my_data")
                 )
             }
         }
@@ -314,6 +339,20 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     workDays = workDays,
                     vehicleProfile = vehicleProfile,
                     viabilityResult = viabilityResult,
+                    shiftState = shiftState,
+                    shiftStartTimeStr = shiftStartTimeStr,
+                    shiftStartTimeMillis = shiftStartTimeMillis,
+                    accumulatedWorkSeconds = accumulatedWorkSeconds,
+                    breakStartTimeMillis = breakStartTimeMillis,
+                    accumulatedBreakSeconds = accumulatedBreakSeconds,
+                    onStartShift = { viewModel.startWorkShift() },
+                    onStartBreak = { viewModel.startBreak() },
+                    onResumeShift = { viewModel.resumeWorkShift() },
+                    onFinishShift = {
+                        viewModel.finishWorkShift()
+                        recordDialogTargetDate = MainViewModel.getTodayDateString()
+                        showRecordDailyWorkDialog = true
+                    },
                     onAddDailyWorkClick = {
                         recordDialogTargetDate = MainViewModel.getTodayDateString()
                         showRecordDailyWorkDialog = true
@@ -329,10 +368,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
                     onOpenProfileMenu = { currentScreen = AppScreen.NEW_USER },
                     onRecordStageAction = { viewModel.recordWorkStageAction(it) },
-                    onAdjustStagesClick = { showAdjustWorkStagesDialog = true },
-                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN },
-                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
-                    authUser = authUser
+                    onAdjustStagesClick = { showAdjustWorkStagesDialog = true }
                 )
                 AppScreen.PLANNING -> PlanningScreen(
                     currentYearMonth = currentYearMonth,
@@ -372,10 +408,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     vehicleProfile = vehicleProfile,
                     onOpenNewUserMenu = { currentScreen = AppScreen.NEW_USER },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
-                    onResetAllData = { viewModel.resetAllDataToZero() },
-                    onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
-                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN },
-                    authUser = authUser
+                    onResetAllData = { viewModel.resetAllDataToZero() }
                 )
                 AppScreen.VEHICLE -> VehicleSectionScreen(
                     vehicleProfile = vehicleProfile,
@@ -389,59 +422,25 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     onDeleteFuelChargeRecord = { viewModel.deleteFuelChargeRecord(it) },
                     onNavigateBack = { currentScreen = AppScreen.HOME }
                 )
-                AppScreen.LOGIN -> LoginScreen(
-                    currentUser = authUser,
-                    onLoginWithEmailPassword = { email, password, onResult ->
-                        viewModel.loginWithEmailPassword(email, password) { success, err ->
-                            if (success) {
-                                if (!vehicleProfile.isProfileConfigured) {
-                                    currentScreen = AppScreen.NEW_USER
-                                } else {
-                                    currentScreen = AppScreen.HOME
-                                }
-                            }
-                            onResult(success, err)
-                        }
-                    },
-                    onRegisterWithEmailPassword = { email, password, name, onResult ->
-                        viewModel.registerWithEmailPassword(email, password, name) { success, err ->
-                            if (success) {
-                                currentScreen = AppScreen.NEW_USER
-                            }
-                            onResult(success, err)
-                        }
-                    },
-                    onSignInWithGoogle = { activityContext, onResult ->
-                        viewModel.signInWithGoogle(activityContext, onResult)
-                    },
-                    onSimulatedGoogleLogin = { name, email ->
-                        viewModel.loginWithSimulatedGoogle(name, email)
-                    },
-                    onGuestLogin = { viewModel.loginAsGuest() },
-                    onLogout = { viewModel.logout() },
-                    onNavigateBack = { currentScreen = AppScreen.HOME },
-                    isInitialLogin = false
+                AppScreen.MY_DATA -> MyDataScreen(
+                    vehicleProfile = vehicleProfile,
+                    dailyEarnings = dailyEarnings,
+                    expenses = expenses,
+                    vehicleCostItems = vehicleCostItems,
+                    workDays = workDays,
+                    viabilityResult = viabilityResult,
+                    onUpdateProfile = { viewModel.updateFullVehicleProfile(it) },
+                    onResetAllData = { viewModel.resetAllDataToZero() }
                 )
-                AppScreen.SUPABASE_DATA -> SupabaseDataScreen(
-                    dadosList = dadosList,
-                    authUser = authUser,
-                    syncState = supabaseSyncState,
-                    supabaseClient = viewModel.supabaseClient,
-                    onSyncNow = { viewModel.syncSupabaseDados() },
-                    onInsertDado = { usuario, conteudo, onComplete ->
-                        viewModel.insertDado(usuario, conteudo, onComplete)
-                    },
-                    onDeleteDado = { viewModel.deleteDado(it) },
-                    onTestConnection = { onResult ->
-                        viewModel.testSupabaseConnection(onResult)
-                    },
-                    onSaveConfig = { url, key ->
-                        viewModel.saveSupabaseConfig(url, key)
-                    },
-                    onClearConfig = { viewModel.clearSupabaseConfig() },
-                    onNavigateBack = { currentScreen = AppScreen.HOME },
-                    onNavigateToLogin = { currentScreen = AppScreen.LOGIN }
-                )
+                AppScreen.WELCOME -> {
+                    // Handled above before Scaffold
+                }
+                AppScreen.IMPORT_DATA -> {
+                    // Handled above before Scaffold
+                }
+                AppScreen.REGISTRATION -> {
+                    // Handled above before Scaffold
+                }
                 AppScreen.NEW_USER -> {
                     // Handled above before Scaffold
                 }
@@ -456,9 +455,7 @@ fun MainAppScaffold(viewModel: MainViewModel) {
             onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
             onNavigateToPlanning = { currentScreen = AppScreen.PLANNING },
             onNavigateToExpenses = { currentScreen = AppScreen.EXPENSES },
-            onNavigateToSettings = { currentScreen = AppScreen.SETTINGS },
-            onNavigateToSupabase = { currentScreen = AppScreen.SUPABASE_DATA },
-            onNavigateToLogin = { currentScreen = AppScreen.LOGIN }
+            onNavigateToSettings = { currentScreen = AppScreen.SETTINGS }
         )
     }
 

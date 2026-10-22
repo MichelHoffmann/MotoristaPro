@@ -33,8 +33,10 @@ import com.example.model.FuelChargeRecord
 import com.example.model.VehicleProfile
 import com.example.model.ViabilityCalculationResult
 import com.example.model.WorkDay
+import com.example.model.WorkShiftState
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -47,6 +49,16 @@ fun HomeScreen(
     workDays: List<WorkDay>,
     vehicleProfile: VehicleProfile,
     viabilityResult: ViabilityCalculationResult,
+    shiftState: WorkShiftState = WorkShiftState.IDLE,
+    shiftStartTimeStr: String = "",
+    shiftStartTimeMillis: Long? = null,
+    accumulatedWorkSeconds: Long = 0L,
+    breakStartTimeMillis: Long? = null,
+    accumulatedBreakSeconds: Long = 0L,
+    onStartShift: () -> Unit = {},
+    onStartBreak: () -> Unit = {},
+    onResumeShift: () -> Unit = {},
+    onFinishShift: () -> Unit = {},
     onAddDailyWorkClick: () -> Unit,
     onNavigateToPlanning: () -> Unit,
     onNavigateToVehicle: () -> Unit,
@@ -54,13 +66,59 @@ fun HomeScreen(
     onRecordStageAction: (stage: String) -> Unit = {},
     onAdjustStagesClick: () -> Unit = {},
     onAddPastDailyWorkClick: () -> Unit = onAddDailyWorkClick,
-    onNavigateToLogin: () -> Unit = {},
-    onNavigateToSupabase: () -> Unit = {},
-    authUser: com.example.model.AuthUser? = null,
     modifier: Modifier = Modifier
 ) {
     val todayDateStr = MainViewModel.getTodayDateString()
     val todayEarningRecord = dailyEarnings.find { it.dateStr == todayDateStr }
+
+    // Live Stopwatch Timer Logic
+    var currentWallTimeMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(shiftState) {
+        if (shiftState == WorkShiftState.WORKING || shiftState == WorkShiftState.ON_BREAK) {
+            while (true) {
+                delay(1000L)
+                currentWallTimeMillis = System.currentTimeMillis()
+            }
+        }
+    }
+
+    val liveWorkedSeconds = remember(currentWallTimeMillis, shiftState, shiftStartTimeMillis, accumulatedWorkSeconds) {
+        if (shiftState == WorkShiftState.WORKING && shiftStartTimeMillis != null) {
+            val liveCurrentShift = (currentWallTimeMillis - shiftStartTimeMillis).coerceAtLeast(0L) / 1000L
+            accumulatedWorkSeconds + liveCurrentShift
+        } else {
+            accumulatedWorkSeconds
+        }
+    }
+
+    val liveBreakSeconds = remember(currentWallTimeMillis, shiftState, breakStartTimeMillis, accumulatedBreakSeconds) {
+        if (shiftState == WorkShiftState.ON_BREAK && breakStartTimeMillis != null) {
+            val liveCurrentBreak = (currentWallTimeMillis - breakStartTimeMillis).coerceAtLeast(0L) / 1000L
+            accumulatedBreakSeconds + liveCurrentBreak
+        } else {
+            accumulatedBreakSeconds
+        }
+    }
+
+    fun formatSecondsToStopwatch(totalSec: Long): String {
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s)
+    }
+
+    // Dynamic platform greeting
+    val platformRaw = vehicleProfile.platform.trim()
+    val platformGreeting = when {
+        platformRaw.contains("Uber", ignoreCase = true) && platformRaw.contains("99", ignoreCase = true) -> "na Uber e 99"
+        platformRaw.contains("Ambos", ignoreCase = true) -> "na Uber e 99"
+        platformRaw.contains("Uber", ignoreCase = true) -> "na Uber"
+        platformRaw.contains("99", ignoreCase = true) -> "na 99"
+        platformRaw.contains("InDrive", ignoreCase = true) -> "na inDrive"
+        platformRaw.isNotBlank() -> "na $platformRaw"
+        else -> "no volante"
+    }
 
     // Today's values
     val todayEarnings = todayEarningRecord?.totalAmount ?: 0.0
@@ -242,7 +300,7 @@ fun HomeScreen(
                         )
                     }
                     Text(
-                        text = "Que seja um ótimo dia na 99!",
+                        text = "Que seja um ótimo dia $platformGreeting!",
                         fontSize = 13.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
@@ -269,7 +327,7 @@ fun HomeScreen(
             }
         }
 
-        // CARD 1: EXPEDIENTE / STATUS DA JORNADA (Exact match to screenshot)
+        // CARD 1: EXPEDIENTE COM CRONÔMETRO DE TRABALHO E BOTÃO DE DESCANSO
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -284,102 +342,356 @@ fun HomeScreen(
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    // Big circular play icon
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF0C241B))
-                            .border(2.dp, EmeraldGreen.copy(alpha = 0.5f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(EmeraldGreen),
-                            contentAlignment = Alignment.Center
+                when (shiftState) {
+                    WorkShiftState.IDLE -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Icon(
-                                imageVector = if (hasTodayData) Icons.Default.Check else Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = Color(0xFF070E18),
-                                modifier = Modifier.size(24.dp)
+                            // Big circular play icon
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF0C241B))
+                                    .border(2.dp, EmeraldGreen.copy(alpha = 0.5f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(EmeraldGreen),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (hasTodayData) Icons.Default.Check else Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color(0xFF070E18),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "Expediente",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldGreen
+                                )
+                                Text(
+                                    text = if (hasTodayData) "Concluído / Atualizar" else "Não iniciado",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextWhite
+                                )
+                                Text(
+                                    text = if (hasTodayData)
+                                        "Você já lançou dados hoje. Toque para iniciar novo turno ou atualizar dados."
+                                    else
+                                        "Toque em iniciar para registrar e cronometrar seu tempo de trabalho ativo.",
+                                    fontSize = 11.5.sp,
+                                    color = TextSecondary,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+
+                        // Big Green Action Button
+                        Button(
+                            onClick = onStartShift,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("btn_iniciar_expediente"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EmeraldGreen,
+                                contentColor = Color(0xFF070E18)
                             )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF070E18)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        tint = EmeraldGreen,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Iniciar expediente",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF070E18)
+                                )
+                            }
                         }
                     }
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "Expediente",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeraldGreen
-                        )
-                        Text(
-                            text = if (hasTodayData) "Em andamento" else "Não iniciado",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextWhite
-                        )
-                        Text(
-                            text = if (hasTodayData)
-                                "Você já lançou dados hoje. Toque para atualizar ou encerrar expediente."
-                            else
-                                "Toque para iniciar seu dia de trabalho e registrar o percurso via GPS.",
-                            fontSize = 11.5.sp,
-                            color = TextSecondary,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
-
-                // Big Green Action Button
-                Button(
-                    onClick = onAddDailyWorkClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("btn_iniciar_expediente"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = EmeraldGreen,
-                        contentColor = Color(0xFF070E18)
-                    )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF070E18)),
-                            contentAlignment = Alignment.Center
+                    WorkShiftState.WORKING -> {
+                        // Header with running indicator
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = if (hasTodayData) Icons.Default.Check else Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = EmeraldGreen,
-                                modifier = Modifier.size(15.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(EmeraldGreen)
+                                )
+                                Text(
+                                    text = "Expediente em andamento",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldGreen
+                                )
+                            }
+                            if (shiftStartTimeStr.isNotBlank()) {
+                                Text(
+                                    text = "Início: $shiftStartTimeStr",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        // Digital Stopwatch Display in that exact location
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF081812),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "TEMPO DE TRABALHO ATIVO",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldGreen.copy(alpha = 0.85f),
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatSecondsToStopwatch(liveWorkedSeconds),
+                                    fontSize = 38.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextWhite,
+                                    letterSpacing = 2.sp
+                                )
+                            }
+                        }
+
+                        // Action Buttons: "Iniciar descanso" and "Encerrar expediente"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Iniciar descanso button
+                            Button(
+                                onClick = onStartBreak,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("btn_iniciar_descanso"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF231C0B),
+                                    contentColor = Color(0xFFFFB300)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Pause,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Iniciar descanso",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFFB300)
+                                    )
+                                }
+                            }
+
+                            // Encerrar expediente button
+                            Button(
+                                onClick = onFinishShift,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("btn_encerrar_expediente"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = EmeraldGreen,
+                                    contentColor = Color(0xFF070E18)
+                                )
+                            ) {
+                                Text(
+                                    text = "Encerrar expediente",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF070E18)
+                                )
+                            }
+                        }
+                    }
+
+                    WorkShiftState.ON_BREAK -> {
+                        // Header for break mode
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFFB300))
+                                )
+                                Text(
+                                    text = "Em descanso (Pausa)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFFB300)
+                                )
+                            }
+                            Text(
+                                text = "Descanso: ${formatSecondsToStopwatch(liveBreakSeconds)}",
+                                fontSize = 12.sp,
+                                color = Color(0xFFFFB300),
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (hasTodayData) "Encerrar expediente" else "Iniciar expediente",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF070E18)
-                        )
+
+                        // Digital Stopwatch Display during break
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF1E1705),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFFB300).copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "TEMPO DE TRABALHO ACUMULADO",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextSecondary,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatSecondsToStopwatch(liveWorkedSeconds),
+                                    fontSize = 38.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextWhite,
+                                    letterSpacing = 2.sp
+                                )
+                            }
+                        }
+
+                        // Action Buttons: "Retomar expediente" and "Encerrar expediente"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = onResumeShift,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("btn_retomar_expediente"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = EmeraldGreen,
+                                    contentColor = Color(0xFF070E18)
+                                )
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color(0xFF070E18),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Retomar expediente",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF070E18)
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = onFinishShift,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("btn_encerrar_expediente_break"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF2B1515),
+                                    contentColor = CoralRed
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, CoralRed.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = "Encerrar expediente",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CoralRed
+                                )
+                            }
+                        }
                     }
                 }
             }

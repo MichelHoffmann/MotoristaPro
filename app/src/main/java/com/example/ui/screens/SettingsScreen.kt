@@ -34,9 +34,6 @@ fun SettingsScreen(
     onOpenNewUserMenu: () -> Unit,
     onNavigateToVehicle: () -> Unit,
     onResetAllData: () -> Unit,
-    onNavigateToSupabase: () -> Unit = {},
-    onNavigateToLogin: () -> Unit = {},
-    authUser: com.example.model.AuthUser? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -198,22 +195,6 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SettingsRow(
-                    icon = Icons.Outlined.AccountCircle,
-                    title = "Conta & Login com Google",
-                    value = if (authUser?.isLoggedIn == true) authUser.name.ifBlank { "Conectado" } else "Conectar",
-                    onClick = onNavigateToLogin
-                )
-                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
-
-                SettingsRow(
-                    icon = Icons.Outlined.CloudSync,
-                    title = "Supabase (Tabela dados)",
-                    value = "Anon Key / REST",
-                    onClick = onNavigateToSupabase
-                )
-                HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
-
                 SettingsRow(
                     icon = Icons.Outlined.DirectionsCar,
                     title = "Custos do Veículo e Tarifas Mínimas",

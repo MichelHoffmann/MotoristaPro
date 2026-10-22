@@ -17,20 +17,10 @@ class AppRepository(private val dao: AppDao) {
     val vehicleProfile: Flow<VehicleProfile?> = dao.getVehicleProfile()
     val vehicleCostItems: Flow<List<VehicleCostItem>> = dao.getAllVehicleCostItems()
     val fuelChargeRecords: Flow<List<FuelChargeRecord>> = dao.getAllFuelChargeRecords()
-    val dados: Flow<List<com.example.model.Dado>> = dao.getAllDados()
 
     suspend fun addDailyEarning(earning: DailyEarning) = dao.insertDailyEarning(earning)
     suspend fun deleteDailyEarning(earning: DailyEarning) = dao.deleteDailyEarning(earning)
     suspend fun getDailyEarningByDate(dateStr: String): DailyEarning? = dao.getDailyEarningByDate(dateStr)
-
-    // Tabela dados
-    suspend fun addDado(dado: com.example.model.Dado) = dao.insertDado(dado)
-    suspend fun deleteDado(dado: com.example.model.Dado) = dao.deleteDado(dado)
-    suspend fun clearDados() = dao.clearAllDados()
-    suspend fun replaceAllDados(list: List<com.example.model.Dado>) {
-        dao.clearAllDados()
-        dao.insertAllDados(list)
-    }
 
     suspend fun toggleWorkDay(dateStr: String) {
         val currentDays = workDays.firstOrNull() ?: emptyList()
@@ -139,41 +129,5 @@ class AppRepository(private val dao: AppDao) {
                 )
             )
         }
-    }
-
-    // User Account Registration and Verification
-    suspend fun getUserByEmail(email: String): com.example.model.UserAccount? {
-        return dao.getUserByEmail(email.trim().lowercase())
-    }
-
-    suspend fun registerUserAccount(email: String, password: String, name: String): Result<com.example.model.UserAccount> {
-        val cleanEmail = email.trim().lowercase()
-        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-            return Result.failure(IllegalArgumentException("Informe um e-mail válido."))
-        }
-        if (password.length < 4) {
-            return Result.failure(IllegalArgumentException("A senha deve ter pelo menos 4 caracteres."))
-        }
-        val existing = dao.getUserByEmail(cleanEmail)
-        if (existing != null) {
-            return Result.failure(IllegalStateException("Este e-mail já está cadastrado. Faça login."))
-        }
-        val user = com.example.model.UserAccount(
-            email = cleanEmail,
-            password = password,
-            name = name.trim()
-        )
-        val id = dao.insertUserAccount(user)
-        return Result.success(user.copy(id = id))
-    }
-
-    suspend fun verifyUserLogin(email: String, password: String): Result<com.example.model.UserAccount> {
-        val cleanEmail = email.trim().lowercase()
-        val user = dao.getUserByEmail(cleanEmail)
-            ?: return Result.failure(IllegalArgumentException("Conta não encontrada. Verifique o e-mail ou cadastre-se."))
-        if (user.password != password) {
-            return Result.failure(IllegalArgumentException("Senha incorreta. Tente novamente."))
-        }
-        return Result.success(user)
     }
 }

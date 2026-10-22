@@ -5,10 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.AppRepository
-import com.example.data.AuthManager
-import com.example.data.SupabaseClient
-import com.example.model.AuthUser
-import com.example.model.Dado
 import com.example.model.DailyEarning
 import com.example.model.Expense
 import com.example.model.FuelChargeRecord
@@ -18,6 +14,7 @@ import com.example.model.VehicleProfile
 import com.example.model.ViabilityCalculationResult
 import com.example.model.ViabilityCalculator
 import com.example.model.WorkDay
+import com.example.model.WorkShiftState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,12 +30,6 @@ import java.util.Locale
 
 enum class PeriodFilter { DIARIO, SEMANAL, MENSAL, ANUAL }
 enum class ExpenseTabFilter { TODAS, CATEGORIAS, COMPROVANTES }
-
-data class SupabaseSyncState(
-    val isLoading: Boolean = false,
-    val isError: Boolean = false,
-    val message: String? = null
-)
 
 data class ChartBarPoint(
     val label: String,
@@ -64,26 +55,22 @@ enum class QuickWorkSchedule {
     CLEAR
 }
 
+data class ShiftSummaryData(
+    val startTime: String = "",
+    val lunchStartTime: String = "",
+    val lunchEndTime: String = "",
+    val endTime: String = "",
+    val workedMinutes: Int = 0
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getInstance(application)
     private val repository = AppRepository(database.appDao())
-    val supabaseClient = SupabaseClient(application)
-    val authManager = AuthManager(application)
-
-    val authUser: StateFlow<AuthUser> = authManager.currentUser
-    val dados: StateFlow<List<Dado>> = repository.dados
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    private val _supabaseSyncState = MutableStateFlow(SupabaseSyncState())
-    val supabaseSyncState: StateFlow<SupabaseSyncState> = _supabaseSyncState.asStateFlow()
 
     init {
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
-            if (supabaseClient.isConfigured()) {
-                syncSupabaseDados()
-            }
         }
     }
 
@@ -114,6 +101,124 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setPeriodFilter(filter: PeriodFilter) { _selectedPeriod.value = filter }
     fun setExpenseTabFilter(filter: ExpenseTabFilter) { _selectedExpenseTab.value = filter }
+
+    // WORK SHIFT STOPWATCH STATE
+    private val _shiftState = MutableStateFlow(WorkShiftState.IDLE)
+    val shiftState: StateFlow<WorkShiftState> = _shiftState.asStateFlow()
+
+    private val _shiftStartTimeMillis = MutableStateFlow<Long?>(null)
+    val shiftStartTimeMillis: StateFlow<Long?> = _shiftStartTimeMillis.asStateFlow()
+
+    private val _shiftStartTimeStr = MutableStateFlow("")
+    val shiftStartTimeStr: StateFlow<String> = _shiftStartTimeStr.asStateFlow()
+
+    private val _accumulatedWorkSeconds = MutableStateFlow(0L)
+    val accumulatedWorkSeconds: StateFlow<Long> = _accumulatedWorkSeconds.asStateFlow()
+
+    private val _breakStartTimeMillis = MutableStateFlow<Long?>(null)
+    val breakStartTimeMillis: StateFlow<Long?> = _breakStartTimeMillis.asStateFlow()
+
+    private val _breakStartTimeStr = MutableStateFlow("")
+    val breakStartTimeStr: StateFlow<String> = _breakStartTimeStr.asStateFlow()
+
+    private val _accumulatedBreakSeconds = MutableStateFlow(0L)
+    val accumulatedBreakSeconds: StateFlow<Long> = _accumulatedBreakSeconds.asStateFlow()
+
+    private val _breakEndTimeStr = MutableStateFlow("")
+    val breakEndTimeStr: StateFlow<String> = _breakEndTimeStr.asStateFlow()
+
+    fun startWorkShift() {
+        val now = System.currentTimeMillis()
+        val timeStr = getCurrentTimeString()
+        _shiftStartTimeMillis.value = now
+        _shiftStartTimeStr.value = timeStr
+        _accumulatedWorkSeconds.value = 0L
+        _breakStartTimeMillis.value = null
+        _accumulatedBreakSeconds.value = 0L
+        _breakStartTimeStr.value = ""
+        _breakEndTimeStr.value = ""
+        _shiftState.value = WorkShiftState.WORKING
+        viewModelScope.launch {
+            repository.setWorkDay(getTodayDateString(), true)
+            recordWorkStageAction("START", getTodayDateString(), timeStr)
+        }
+    }
+
+    fun startBreak() {
+        if (_shiftState.value != WorkShiftState.WORKING) return
+        val now = System.currentTimeMillis()
+        val timeStr = getCurrentTimeString()
+        _shiftStartTimeMillis.value?.let { start ->
+            val elapsed = (now - start) / 1000L
+            _accumulatedWorkSeconds.value += elapsed
+        }
+        _shiftStartTimeMillis.value = null
+        _breakStartTimeMillis.value = now
+        _breakStartTimeStr.value = timeStr
+        _shiftState.value = WorkShiftState.ON_BREAK
+        viewModelScope.launch {
+            recordWorkStageAction("LUNCH_START", getTodayDateString(), timeStr)
+        }
+    }
+
+    fun resumeWorkShift() {
+        if (_shiftState.value != WorkShiftState.ON_BREAK) return
+        val now = System.currentTimeMillis()
+        val timeStr = getCurrentTimeString()
+        _breakStartTimeMillis.value?.let { startBreak ->
+            val elapsed = (now - startBreak) / 1000L
+            _accumulatedBreakSeconds.value += elapsed
+        }
+        _breakStartTimeMillis.value = null
+        _breakEndTimeStr.value = timeStr
+        _shiftStartTimeMillis.value = now
+        _shiftState.value = WorkShiftState.WORKING
+        viewModelScope.launch {
+            recordWorkStageAction("LUNCH_END", getTodayDateString(), timeStr)
+        }
+    }
+
+    fun finishWorkShift(): ShiftSummaryData {
+        val now = System.currentTimeMillis()
+        val endTimeStr = getCurrentTimeString()
+        var totalWorkSec = _accumulatedWorkSeconds.value
+        if (_shiftState.value == WorkShiftState.WORKING) {
+            _shiftStartTimeMillis.value?.let { start ->
+                totalWorkSec += (now - start) / 1000L
+            }
+        }
+        val startStr = _shiftStartTimeStr.value
+        val lunchStartStr = _breakStartTimeStr.value
+        val lunchEndStr = _breakEndTimeStr.value
+        val workedMins = (totalWorkSec / 60L).toInt()
+
+        _shiftState.value = WorkShiftState.IDLE
+        _shiftStartTimeMillis.value = null
+        _breakStartTimeMillis.value = null
+
+        viewModelScope.launch {
+            recordWorkStageAction("END", getTodayDateString(), endTimeStr)
+        }
+
+        return ShiftSummaryData(
+            startTime = startStr,
+            lunchStartTime = lunchStartStr,
+            lunchEndTime = lunchEndStr,
+            endTime = endTimeStr,
+            workedMinutes = workedMins
+        )
+    }
+
+    fun resetWorkShift() {
+        _shiftState.value = WorkShiftState.IDLE
+        _shiftStartTimeMillis.value = null
+        _breakStartTimeMillis.value = null
+        _accumulatedWorkSeconds.value = 0L
+        _accumulatedBreakSeconds.value = 0L
+        _shiftStartTimeStr.value = ""
+        _breakStartTimeStr.value = ""
+        _breakEndTimeStr.value = ""
+    }
 
     // Calendar state (Selected Year & Month for planning)
     private val calendar = Calendar.getInstance()
@@ -416,7 +521,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         avgConsumption: Double,
         fuelOrEnergyPrice: Double,
         currentMileage: Double,
-        monthlyGoal: Double
+        monthlyGoal: Double,
+        platform: String = "Uber e 99",
+        phoneNumber: String = "",
+        vehicleBrand: String = ""
     ) {
         viewModelScope.launch {
             val current = vehicleProfile.value
@@ -440,195 +548,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     currentMileage = currentMileage,
                     monthlyGoal = if (monthlyGoal > 0) monthlyGoal else 5000.0,
                     isGoalNetProfit = true,
-                    isProfileConfigured = true
+                    isProfileConfigured = true,
+                    platform = if (platform.isNotBlank()) platform else current.platform,
+                    phoneNumber = if (phoneNumber.isNotBlank()) phoneNumber else current.phoneNumber,
+                    vehicleBrand = if (vehicleBrand.isNotBlank()) vehicleBrand else current.vehicleBrand
                 )
             )
         }
     }
 
-    // Supabase Operations for table 'dados' (colunas: id, usuario, conteudo)
-    fun syncSupabaseDados() {
+    fun updateDriverContactAndPlatform(name: String, platform: String, phone: String) {
         viewModelScope.launch {
-            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Sincronizando com Supabase...")
-            val result = supabaseClient.fetchDados()
-            result.onSuccess { remoteDados ->
-                repository.replaceAllDados(remoteDados)
-                _supabaseSyncState.value = SupabaseSyncState(
-                    isLoading = false,
-                    isError = false,
-                    message = "Sincronizado! ${remoteDados.size} registro(s) obtidos."
+            val current = vehicleProfile.value
+            repository.updateVehicleProfile(
+                current.copy(
+                    driverName = name,
+                    platform = platform,
+                    phoneNumber = phone
                 )
-            }.onFailure { err ->
-                _supabaseSyncState.value = SupabaseSyncState(
-                    isLoading = false,
-                    isError = true,
-                    message = err.message ?: "Erro ao sincronizar com Supabase"
-                )
-            }
+            )
         }
-    }
-
-    fun insertDado(usuario: String, conteudo: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
-        viewModelScope.launch {
-            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Salvando registro...")
-            val userToSave = usuario.trim().ifBlank {
-                val current = authUser.value
-                if (current.isLoggedIn) current.name.ifBlank { current.email } else "Motorista"
-            }
-
-            val timestampStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-            if (supabaseClient.isConfigured()) {
-                val result = supabaseClient.insertDado(userToSave, conteudo)
-                result.onSuccess { remoteDado ->
-                    repository.addDado(remoteDado)
-                    _supabaseSyncState.value = SupabaseSyncState(
-                        isLoading = false,
-                        isError = false,
-                        message = "Registro salvo no Supabase com sucesso!"
-                    )
-                    onComplete?.invoke(true, null)
-                }.onFailure { err ->
-                    // Fallback local
-                    val local = Dado(
-                        id = System.currentTimeMillis(),
-                        usuario = userToSave,
-                        conteudo = conteudo,
-                        createdAt = timestampStr,
-                        isSyncedWithSupabase = false
-                    )
-                    repository.addDado(local)
-                    _supabaseSyncState.value = SupabaseSyncState(
-                        isLoading = false,
-                        isError = true,
-                        message = "Salvo localmente (Supabase indisponível: ${err.message})"
-                    )
-                    onComplete?.invoke(false, err.message)
-                }
-            } else {
-                val local = Dado(
-                    id = System.currentTimeMillis(),
-                    usuario = userToSave,
-                    conteudo = conteudo,
-                    createdAt = timestampStr,
-                    isSyncedWithSupabase = false
-                )
-                repository.addDado(local)
-                _supabaseSyncState.value = SupabaseSyncState(
-                    isLoading = false,
-                    isError = false,
-                    message = "Salvo na tabela dados local! Configure Supabase para nuvem."
-                )
-                onComplete?.invoke(true, null)
-            }
-        }
-    }
-
-    fun deleteDado(dado: Dado) {
-        viewModelScope.launch {
-            repository.deleteDado(dado)
-            if (supabaseClient.isConfigured() && dado.id > 0) {
-                supabaseClient.deleteDado(dado.id)
-            }
-        }
-    }
-
-    fun testSupabaseConnection(onResult: (Boolean, String) -> Unit) {
-        viewModelScope.launch {
-            _supabaseSyncState.value = SupabaseSyncState(isLoading = true, message = "Testando conexão com Supabase...")
-            val res = supabaseClient.testConnection()
-            res.onSuccess { msg ->
-                _supabaseSyncState.value = SupabaseSyncState(isLoading = false, isError = false, message = msg)
-                onResult(true, msg)
-            }.onFailure { err ->
-                val msg = err.message ?: "Falha ao conectar ao Supabase."
-                _supabaseSyncState.value = SupabaseSyncState(isLoading = false, isError = true, message = msg)
-                onResult(false, msg)
-            }
-        }
-    }
-
-    fun saveSupabaseConfig(url: String, anonKey: String) {
-        supabaseClient.saveCustomConfig(url, anonKey)
-        syncSupabaseDados()
-    }
-
-    fun clearSupabaseConfig() {
-        supabaseClient.clearCustomConfig()
-        _supabaseSyncState.value = SupabaseSyncState(message = "Configuração do Supabase redefinida.")
-    }
-
-    // Google Sign-In & Authentication
-    fun signInWithGoogle(context: android.content.Context, onResult: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            val res = authManager.signInWithGoogleCredentialManager(context)
-            res.onSuccess { user ->
-                onResult(true, null)
-            }.onFailure { err ->
-                onResult(false, err.message)
-            }
-        }
-    }
-
-    fun loginWithSimulatedGoogle(name: String, email: String, photoUrl: String = "") {
-        authManager.loginWithSimulatedGoogle(name, email, photoUrl)
-    }
-
-    fun loginAsGuest() {
-        authManager.loginAsGuest()
-    }
-
-    fun registerWithEmailPassword(
-        email: String,
-        password: String,
-        name: String = "",
-        onResult: (Boolean, String?) -> Unit
-    ) {
-        viewModelScope.launch {
-            val result = repository.registerUserAccount(email, password, name)
-            result.onSuccess { user ->
-                authManager.saveUser(
-                    com.example.model.AuthUser(
-                        id = user.id.toString(),
-                        name = user.name.ifBlank { user.email.substringBefore("@") },
-                        email = user.email,
-                        isLoggedIn = true,
-                        isGuest = false
-                    )
-                )
-                onResult(true, null)
-            }.onFailure { err ->
-                onResult(false, err.message)
-            }
-        }
-    }
-
-    fun loginWithEmailPassword(
-        email: String,
-        password: String,
-        onResult: (Boolean, String?) -> Unit
-    ) {
-        viewModelScope.launch {
-            val result = repository.verifyUserLogin(email, password)
-            result.onSuccess { user ->
-                authManager.saveUser(
-                    com.example.model.AuthUser(
-                        id = user.id.toString(),
-                        name = user.name.ifBlank { user.email.substringBefore("@") },
-                        email = user.email,
-                        isLoggedIn = true,
-                        isGuest = false
-                    )
-                )
-                onResult(true, null)
-            }.onFailure { err ->
-                onResult(false, err.message)
-            }
-        }
-    }
-
-    fun logout() {
-        authManager.logout()
     }
 
     fun resetAllDataToZero() {
