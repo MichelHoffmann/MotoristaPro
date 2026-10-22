@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
@@ -193,6 +194,52 @@ fun HomeScreen(
     val driverName = vehicleProfile.driverName.trim().split("\\s+".toRegex()).firstOrNull()?.ifBlank { "Michel" } ?: "Michel"
     val carModel = vehicleProfile.modelName.ifBlank { "BYD Dolphin Mini" }
     val isElectric = vehicleProfile.isElectric
+
+    // Cálculo da necessidade energética/combustível para a meta do dia com margem de segurança de pelo menos 10%
+    val estimatedDailyKm: Double = when {
+        viabilityResult.hasSufficientData && viabilityResult.estimatedDailyKmToGoal > 0.0 -> {
+            viabilityResult.estimatedDailyKmToGoal
+        }
+        vehicleProfile.avgDailyKm > 0.0 -> {
+            vehicleProfile.avgDailyKm
+        }
+        else -> {
+            (displayDailyGoal / 2.00) * 1.25
+        }
+    }
+    // Margem de folga de pelo menos 10%
+    val safetyMarginFactor = 1.10
+    val kmNeededWithBuffer = estimatedDailyKm * safetyMarginFactor
+
+    // Valores reais calculados para o Card 2
+    val autonomyBadgeValue: String
+    val autonomyBadgeLabel: String
+    val autonomyCardDescription: String
+
+    if (isElectric) {
+        val fullRange = if (vehicleProfile.fullRangeKm > 0.0) vehicleProfile.fullRangeKm else 300.0
+        val batteryPercentNeeded = ((kmNeededWithBuffer / fullRange) * 100.0).roundToInt().coerceAtLeast(1)
+        autonomyBadgeValue = "$batteryPercentNeeded%"
+        autonomyBadgeLabel = if (batteryPercentNeeded <= 100) "Bateria ideal\n(+10% folga)" else "Bateria ideal\n(requer recarga)"
+        autonomyCardDescription = if (batteryPercentNeeded <= 100) {
+            "Para bater a meta com tranquilidade (+10% de folga), seu carro precisa de cerca de $batteryPercentNeeded% de bateria (${kmNeededWithBuffer.toInt()} km)."
+        } else {
+            "Para bater a meta (+10% de folga), seu carro precisa de cerca de $batteryPercentNeeded% de bateria (${kmNeededWithBuffer.toInt()} km). Recomenda-se uma recarga durante o expediente."
+        }
+    } else {
+        val effectiveConsumption = if (vehicleProfile.averageConsumption > 0.0) {
+            vehicleProfile.averageConsumption
+        } else if (vehicleProfile.fullRangeKm > 0.0) {
+            vehicleProfile.fullRangeKm / 50.0
+        } else {
+            12.0
+        }
+        val litersNeeded = kmNeededWithBuffer / effectiveConsumption
+        val litersFormatted = String.format(Locale.GERMANY, "%.1f", litersNeeded)
+        autonomyBadgeValue = "$litersFormatted L"
+        autonomyBadgeLabel = "Gasolina ideal\n(+10% folga)"
+        autonomyCardDescription = "Para bater a meta com tranquilidade (+10% de folga), seu carro precisa de cerca de $litersFormatted L de gasolina (${kmNeededWithBuffer.toInt()} km)."
+    }
 
     Column(
         modifier = modifier
@@ -748,17 +795,14 @@ fun HomeScreen(
                         letterSpacing = (-0.5).sp
                     )
                     Text(
-                        text = if (isElectric)
-                            "Para bater a meta com tranquilidade, seu carro precisa estar com ~70% de bateria."
-                        else
-                            "Para bater a meta com tranquilidade, seu carro precisa de cerca de ~${(displayDailyGoal / 2.0).toInt()} km rodados.",
+                        text = autonomyCardDescription,
                         fontSize = 11.sp,
                         color = TextSecondary,
                         lineHeight = 15.sp
                     )
                 }
 
-                // Battery / Autonomy Ideal Badge on right with Chevron
+                // Battery / Fuel Ideal Badge on right with Chevron
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -785,14 +829,14 @@ fun HomeScreen(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = if (isElectric) "70%" else "~150 km",
+                                    text = autonomyBadgeValue,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = EmeraldGreen
                                 )
                             }
                             Text(
-                                text = if (isElectric) "Bateria ideal\npara a meta" else "Autonomia\npara a meta",
+                                text = autonomyBadgeLabel,
                                 fontSize = 9.sp,
                                 color = TextSecondary,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,

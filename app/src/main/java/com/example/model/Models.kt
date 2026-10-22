@@ -216,7 +216,8 @@ data class VehicleProfile(
     // Plataforma de trabalho e contato do motorista
     val platform: String = "Uber e 99", // Uber, 99, Ambos, etc.
     val phoneNumber: String = "",
-    val vehicleBrand: String = ""
+    val vehicleBrand: String = "",
+    val fullRangeKm: Double = 0.0 // Quantos km faz com tanque cheio ou carga completa
 )
 
 enum class WorkShiftState {

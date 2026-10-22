@@ -15,6 +15,7 @@ import com.example.model.ViabilityCalculationResult
 import com.example.model.ViabilityCalculator
 import com.example.model.WorkDay
 import com.example.model.WorkShiftState
+import com.example.util.CsvExportHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -218,6 +219,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _shiftStartTimeStr.value = ""
         _breakStartTimeStr.value = ""
         _breakEndTimeStr.value = ""
+    }
+
+    fun getLiveWorkSeconds(): Long {
+        val now = System.currentTimeMillis()
+        var total = _accumulatedWorkSeconds.value
+        if (_shiftState.value == WorkShiftState.WORKING) {
+            _shiftStartTimeMillis.value?.let { start ->
+                total += (now - start).coerceAtLeast(0L) / 1000L
+            }
+        }
+        return total
+    }
+
+    fun getLiveBreakSeconds(): Long {
+        val now = System.currentTimeMillis()
+        var total = _accumulatedBreakSeconds.value
+        if (_shiftState.value == WorkShiftState.ON_BREAK) {
+            _breakStartTimeMillis.value?.let { startBreak ->
+                total += (now - startBreak).coerceAtLeast(0L) / 1000L
+            }
+        }
+        return total
+    }
+
+    fun generateLatestCsv(): String {
+        val profile = vehicleProfile.value
+        val earnings = dailyEarnings.value
+        val exps = expenses.value
+        val costItems = vehicleCostItems.value
+        val wDays = workDays.value
+        val viability = viabilityResult.value
+
+        return CsvExportHelper.generateFullCsv(
+            profile = profile,
+            dailyEarnings = earnings,
+            expenses = exps,
+            vehicleCostItems = costItems,
+            workDays = wDays,
+            viabilityResult = viability,
+            shiftState = _shiftState.value,
+            shiftStartTimeStr = _shiftStartTimeStr.value,
+            shiftStartTimeMillis = _shiftStartTimeMillis.value,
+            accumulatedWorkSeconds = _accumulatedWorkSeconds.value,
+            breakStartTimeMillis = _breakStartTimeMillis.value,
+            accumulatedBreakSeconds = _accumulatedBreakSeconds.value,
+            breakStartTimeStr = _breakStartTimeStr.value,
+            breakEndTimeStr = _breakEndTimeStr.value
+        )
     }
 
     // Calendar state (Selected Year & Month for planning)
@@ -524,7 +573,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         monthlyGoal: Double,
         platform: String = "Uber e 99",
         phoneNumber: String = "",
-        vehicleBrand: String = ""
+        vehicleBrand: String = "",
+        fullRangeKm: Double = 0.0
     ) {
         viewModelScope.launch {
             val current = vehicleProfile.value
@@ -551,7 +601,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isProfileConfigured = true,
                     platform = if (platform.isNotBlank()) platform else current.platform,
                     phoneNumber = if (phoneNumber.isNotBlank()) phoneNumber else current.phoneNumber,
-                    vehicleBrand = if (vehicleBrand.isNotBlank()) vehicleBrand else current.vehicleBrand
+                    vehicleBrand = if (vehicleBrand.isNotBlank()) vehicleBrand else current.vehicleBrand,
+                    fullRangeKm = if (fullRangeKm > 0) fullRangeKm else current.fullRangeKm
                 )
             )
         }

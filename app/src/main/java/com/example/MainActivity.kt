@@ -1,11 +1,13 @@
 package com.example
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +64,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainAppScaffold(viewModel: MainViewModel) {
-    var currentScreen by remember { mutableStateOf(AppScreen.WELCOME) }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("motorista_pro_prefs", Context.MODE_PRIVATE) }
+    val hasLoggedInOnce = remember { prefs.getBoolean("user_has_logged_in_once", false) }
+
+    // Start directly on HOME if user already logged in or profile configured; otherwise start on WELCOME
+    var currentScreen by remember {
+        mutableStateOf(if (hasLoggedInOnce) AppScreen.HOME else AppScreen.WELCOME)
+    }
     var showMoreSheet by remember { mutableStateOf(false) }
 
     // Dialog visibility states
@@ -92,18 +101,38 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     val breakStartTimeMillis by viewModel.breakStartTimeMillis.collectAsStateWithLifecycle()
     val accumulatedBreakSeconds by viewModel.accumulatedBreakSeconds.collectAsStateWithLifecycle()
 
-    // Handle back button on sub-screens
-    if (currentScreen != AppScreen.HOME && currentScreen != AppScreen.WELCOME) {
+    // Automatic redirection if user already logged in, has configured profile or has records
+    LaunchedEffect(hasLoggedInOnce, vehicleProfile.isProfileConfigured, dailyEarnings.size) {
+        if (hasLoggedInOnce || vehicleProfile.isProfileConfigured || dailyEarnings.isNotEmpty()) {
+            prefs.edit().putBoolean("user_has_logged_in_once", true).apply()
+            if (currentScreen == AppScreen.WELCOME) {
+                currentScreen = AppScreen.HOME
+            }
+        }
+    }
+
+    // Handle back button on sub-screens (never return to Welcome if user already logged in once)
+    if (currentScreen != AppScreen.HOME) {
         BackHandler {
             currentScreen = when (currentScreen) {
-                AppScreen.IMPORT_DATA, AppScreen.REGISTRATION -> AppScreen.WELCOME
+                AppScreen.IMPORT_DATA, AppScreen.REGISTRATION -> {
+                    if (hasLoggedInOnce || vehicleProfile.isProfileConfigured || dailyEarnings.isNotEmpty()) {
+                        AppScreen.HOME
+                    } else {
+                        AppScreen.WELCOME
+                    }
+                }
                 else -> AppScreen.HOME
             }
         }
     }
 
-    // 1. Initial Screen: Welcome Screen
+    // 1. Initial Screen: Welcome Screen (Only accessible before first login)
     if (currentScreen == AppScreen.WELCOME) {
+        if (hasLoggedInOnce || vehicleProfile.isProfileConfigured || dailyEarnings.isNotEmpty()) {
+            currentScreen = AppScreen.HOME
+            return
+        }
         WelcomeScreen(
             appName = "Motorista Pro",
             onExistingUserClick = {
@@ -120,9 +149,15 @@ fun MainAppScaffold(viewModel: MainViewModel) {
     if (currentScreen == AppScreen.IMPORT_DATA) {
         ImportDataScreen(
             appName = "Motorista Pro",
-            onNavigateBack = { currentScreen = AppScreen.WELCOME },
-            onImportSuccess = { currentScreen = AppScreen.HOME },
+            onNavigateBack = {
+                currentScreen = if (hasLoggedInOnce || vehicleProfile.isProfileConfigured || dailyEarnings.isNotEmpty()) AppScreen.HOME else AppScreen.WELCOME
+            },
+            onImportSuccess = {
+                prefs.edit().putBoolean("user_has_logged_in_once", true).apply()
+                currentScreen = AppScreen.HOME
+            },
             onContinueWithoutImport = {
+                prefs.edit().putBoolean("user_has_logged_in_once", true).apply()
                 if (!vehicleProfile.isProfileConfigured) {
                     currentScreen = AppScreen.REGISTRATION
                 } else {
@@ -155,8 +190,11 @@ fun MainAppScaffold(viewModel: MainViewModel) {
         RegistrationWizardScreen(
             appName = "Motorista Pro",
             currentProfile = vehicleProfile,
-            onNavigateBack = { currentScreen = AppScreen.WELCOME },
-            onComplete = { name, model, year, fuelType, isElectric, consumption, price, mileage, monthlyGoal, platform, phone, brand ->
+            onNavigateBack = {
+                currentScreen = if (hasLoggedInOnce || vehicleProfile.isProfileConfigured || dailyEarnings.isNotEmpty()) AppScreen.HOME else AppScreen.WELCOME
+            },
+            onComplete = { name, model, year, fuelType, isElectric, consumption, price, mileage, monthlyGoal, platform, phone, brand, fullRange ->
+                prefs.edit().putBoolean("user_has_logged_in_once", true).apply()
                 viewModel.saveUserProfile(
                     name = name,
                     model = model,
@@ -169,7 +207,8 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     monthlyGoal = monthlyGoal,
                     platform = platform,
                     phoneNumber = phone,
-                    vehicleBrand = brand
+                    vehicleBrand = brand,
+                    fullRangeKm = fullRange
                 )
                 currentScreen = AppScreen.HOME
             }
@@ -408,7 +447,11 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     vehicleProfile = vehicleProfile,
                     onOpenNewUserMenu = { currentScreen = AppScreen.NEW_USER },
                     onNavigateToVehicle = { currentScreen = AppScreen.VEHICLE },
-                    onResetAllData = { viewModel.resetAllDataToZero() }
+                    onResetAllData = {
+                        prefs.edit().putBoolean("user_has_logged_in_once", false).apply()
+                        viewModel.resetAllDataToZero()
+                        currentScreen = AppScreen.WELCOME
+                    }
                 )
                 AppScreen.VEHICLE -> VehicleSectionScreen(
                     vehicleProfile = vehicleProfile,
@@ -429,8 +472,15 @@ fun MainAppScaffold(viewModel: MainViewModel) {
                     vehicleCostItems = vehicleCostItems,
                     workDays = workDays,
                     viabilityResult = viabilityResult,
+                    shiftState = shiftState,
+                    shiftStartTimeStr = shiftStartTimeStr,
+                    onGenerateFreshCsv = { viewModel.generateLatestCsv() },
                     onUpdateProfile = { viewModel.updateFullVehicleProfile(it) },
-                    onResetAllData = { viewModel.resetAllDataToZero() }
+                    onResetAllData = {
+                        prefs.edit().putBoolean("user_has_logged_in_once", false).apply()
+                        viewModel.resetAllDataToZero()
+                        currentScreen = AppScreen.WELCOME
+                    }
                 )
                 AppScreen.WELCOME -> {
                     // Handled above before Scaffold

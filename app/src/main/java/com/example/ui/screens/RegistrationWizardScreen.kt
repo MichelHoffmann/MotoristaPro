@@ -54,7 +54,8 @@ fun RegistrationWizardScreen(
         monthlyGoal: Double,
         platform: String,
         phoneNumber: String,
-        vehicleBrand: String
+        vehicleBrand: String,
+        fullRangeKm: Double
     ) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -87,6 +88,15 @@ fun RegistrationWizardScreen(
                 currentProfile.averageConsumption.toString()
             } else {
                 if (isElectric) "7.2" else "12.5"
+            }
+        )
+    }
+    var fullRangeText by remember {
+        mutableStateOf(
+            if (currentProfile.fullRangeKm > 0) {
+                currentProfile.fullRangeKm.toInt().toString()
+            } else {
+                if (isElectric) "320" else "550"
             }
         )
     }
@@ -491,6 +501,7 @@ fun RegistrationWizardScreen(
                                         modifier = Modifier.clickable {
                                             isElectric = false
                                             consumptionText = "12.5"
+                                            if (fullRangeText == "320" || fullRangeText == "300") fullRangeText = "550"
                                         }
                                     ) {
                                         RadioButton(
@@ -498,6 +509,7 @@ fun RegistrationWizardScreen(
                                             onClick = {
                                                 isElectric = false
                                                 consumptionText = "12.5"
+                                                if (fullRangeText == "320" || fullRangeText == "300") fullRangeText = "550"
                                             },
                                             colors = RadioButtonDefaults.colors(selectedColor = EmeraldGreen)
                                         )
@@ -510,6 +522,7 @@ fun RegistrationWizardScreen(
                                         modifier = Modifier.clickable {
                                             isElectric = true
                                             consumptionText = "7.2"
+                                            if (fullRangeText == "550" || fullRangeText == "500") fullRangeText = "320"
                                         }
                                     ) {
                                         RadioButton(
@@ -517,6 +530,7 @@ fun RegistrationWizardScreen(
                                             onClick = {
                                                 isElectric = true
                                                 consumptionText = "7.2"
+                                                if (fullRangeText == "550" || fullRangeText == "500") fullRangeText = "320"
                                             },
                                             colors = RadioButtonDefaults.colors(selectedColor = EmeraldGreen)
                                         )
@@ -564,6 +578,7 @@ fun RegistrationWizardScreen(
                                     .clickable {
                                         isElectric = false
                                         consumptionText = "12.5"
+                                        if (fullRangeText == "320" || fullRangeText == "300") fullRangeText = "550"
                                     }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
@@ -584,6 +599,7 @@ fun RegistrationWizardScreen(
                                     .clickable {
                                         isElectric = true
                                         consumptionText = "7.2"
+                                        if (fullRangeText == "550" || fullRangeText == "500") fullRangeText = "320"
                                     }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
@@ -608,7 +624,18 @@ fun RegistrationWizardScreen(
                             testTag = "input_wizard_consumption"
                         )
 
-                        // 6. Hodômetro atual (km)
+                        // 6. Autonomia com tanque cheio ou carga completa (km)
+                        WizardInputField(
+                            icon = if (isElectric) Icons.Default.BatteryChargingFull else Icons.Default.LocalGasStation,
+                            label = if (isElectric) "Autonomia com carga completa 100% (km)" else "Autonomia com tanque cheio (km)",
+                            value = fullRangeText,
+                            onValueChange = { fullRangeText = it },
+                            placeholder = if (isElectric) "Ex: 320" else "Ex: 550",
+                            keyboardType = KeyboardType.Number,
+                            testTag = "input_wizard_full_range"
+                        )
+
+                        // 7. Hodômetro atual (km)
                         WizardInputField(
                             icon = Icons.Outlined.Speed,
                             label = "Hodômetro atual (km)",
@@ -668,6 +695,7 @@ fun RegistrationWizardScreen(
                         onClick = {
                             val finalModel = "$selectedBrand $selectedModel".trim()
                             val consumption = consumptionText.replace(",", ".").toDoubleOrNull() ?: if (isElectric) 7.2 else 12.5
+                            val fullRange = fullRangeText.replace(",", ".").toDoubleOrNull() ?: if (isElectric) 320.0 else 550.0
                             val mileage = odometerText.replace(",", ".").toDoubleOrNull() ?: 0.0
                             val fuelPrice = if (isElectric) 0.85 else 5.89
                             val fuelTypeName = if (isElectric) "Elétrico" else "Flex (Gasolina/Etanol)"
@@ -684,7 +712,8 @@ fun RegistrationWizardScreen(
                                 6000.0,
                                 selectedPlatform,
                                 phoneNumber,
-                                selectedBrand
+                                selectedBrand,
+                                fullRange
                             )
                         },
                         modifier = Modifier

@@ -44,6 +44,9 @@ fun MyDataScreen(
     vehicleCostItems: List<VehicleCostItem>,
     workDays: List<WorkDay>,
     viabilityResult: ViabilityCalculationResult,
+    shiftState: WorkShiftState = WorkShiftState.IDLE,
+    shiftStartTimeStr: String = "",
+    onGenerateFreshCsv: () -> String,
     onUpdateProfile: (VehicleProfile) -> Unit,
     onResetAllData: () -> Unit,
     modifier: Modifier = Modifier
@@ -61,29 +64,24 @@ fun MyDataScreen(
     var editMileage by remember { mutableStateOf(vehicleProfile.currentMileage.toInt().toString()) }
     var editMonthlyGoal by remember { mutableStateOf(vehicleProfile.monthlyGoal.toInt().toString()) }
     var editAvgConsumption by remember { mutableStateOf(vehicleProfile.averageConsumption.toString()) }
-
-    var showResetConfirmDialog by remember { mutableStateOf(false) }
-
-    // CSV generator
-    val fullCsvContent = remember(vehicleProfile, dailyEarnings, expenses, vehicleCostItems, workDays, viabilityResult) {
-        CsvExportHelper.generateFullCsv(
-            profile = vehicleProfile,
-            dailyEarnings = dailyEarnings,
-            expenses = expenses,
-            vehicleCostItems = vehicleCostItems,
-            workDays = workDays,
-            viabilityResult = viabilityResult
+    var editFullRange by remember {
+        mutableStateOf(
+            if (vehicleProfile.fullRangeKm > 0) vehicleProfile.fullRangeKm.toInt().toString() else if (vehicleProfile.isElectric) "320" else "550"
         )
     }
+
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
 
     // Android Storage Access Framework launcher to save .CSV directly to Downloads / Files
     val saveCsvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         if (uri != null) {
-            val success = CsvExportHelper.writeCsvToUri(context, uri, fullCsvContent)
+            // Generate absolute freshest real-time CSV data at the exact moment of saving
+            val freshCsv = onGenerateFreshCsv()
+            val success = CsvExportHelper.writeCsvToUri(context, uri, freshCsv)
             if (success) {
-                Toast.makeText(context, "Arquivo CSV salvo com sucesso!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Arquivo CSV atualizado salvo com sucesso!", Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(context, "Erro ao salvar arquivo CSV.", Toast.LENGTH_SHORT).show()
             }
@@ -280,6 +278,60 @@ fun MyDataScreen(
                     }
                 }
 
+                // Live Shift / Stopwatch Indicator for CSV
+                if (shiftState != WorkShiftState.IDLE) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF0A2216),
+                        border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = null,
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Cronômetro ativo hoje (${if (shiftState == WorkShiftState.WORKING) "Trabalhando" else "Em descanso"}${if (shiftStartTimeStr.isNotBlank()) " desde às $shiftStartTimeStr" else ""}) • Gravado no CSV!",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = EmeraldGreen
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF131C28),
+                        border = BorderStroke(1.dp, BorderDark),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Cronômetro hoje: Não iniciado • Status registrado no CSV",
+                                fontSize = 11.5.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
                 // Action buttons: Download & Share
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -321,7 +373,8 @@ fun MyDataScreen(
                     // Share
                     OutlinedButton(
                         onClick = {
-                            CsvExportHelper.shareCsvText(context, fullCsvContent)
+                            val freshCsv = onGenerateFreshCsv()
+                            CsvExportHelper.shareCsvText(context, freshCsv)
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -381,6 +434,7 @@ fun MyDataScreen(
                 editMileage = vehicleProfile.currentMileage.toInt().toString()
                 editMonthlyGoal = vehicleProfile.monthlyGoal.toInt().toString()
                 editAvgConsumption = vehicleProfile.averageConsumption.toString()
+                editFullRange = if (vehicleProfile.fullRangeKm > 0) vehicleProfile.fullRangeKm.toInt().toString() else if (vehicleProfile.isElectric) "320" else "550"
                 showEditVehicleDialog = true
             }
         ) {
@@ -399,6 +453,10 @@ fun MyDataScreen(
             DataItemRow(
                 label = "Consumo Médio Registrado",
                 value = "${vehicleProfile.averageConsumption} ${if (vehicleProfile.isElectric) "km/kWh" else "km/L"}"
+            )
+            DataItemRow(
+                label = if (vehicleProfile.isElectric) "Autonomia Carga 100%" else "Autonomia Tanque Cheio",
+                value = String.format(Locale.GERMANY, "%.0f km", if (vehicleProfile.fullRangeKm > 0) vehicleProfile.fullRangeKm else if (vehicleProfile.isElectric) 320.0 else 550.0)
             )
             DataItemRow(
                 label = "Preço de Referência",
@@ -663,6 +721,20 @@ fun MyDataScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    OutlinedTextField(
+                        value = editFullRange,
+                        onValueChange = { editFullRange = it },
+                        label = { Text(if (vehicleProfile.isElectric) "Autonomia com carga 100% (km)" else "Autonomia com tanque cheio (km)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderDark
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             },
             confirmButton = {
@@ -671,12 +743,14 @@ fun MyDataScreen(
                         val km = editMileage.replace(",", ".").toDoubleOrNull() ?: vehicleProfile.currentMileage
                         val goal = editMonthlyGoal.replace(",", ".").toDoubleOrNull() ?: vehicleProfile.monthlyGoal
                         val cons = editAvgConsumption.replace(",", ".").toDoubleOrNull() ?: vehicleProfile.averageConsumption
+                        val fullRange = editFullRange.replace(",", ".").toDoubleOrNull() ?: vehicleProfile.fullRangeKm
 
                         onUpdateProfile(
                             vehicleProfile.copy(
                                 currentMileage = km,
                                 monthlyGoal = goal,
-                                averageConsumption = cons
+                                averageConsumption = cons,
+                                fullRangeKm = fullRange
                             )
                         )
                         showEditVehicleDialog = false
